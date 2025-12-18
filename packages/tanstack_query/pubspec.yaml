@@ -1,0 +1,21 @@
+name: tanstack_query
+description: Widgets that help state management of asynchronous operations such as sending HTTP requests, getting the response, and caching the result.
+version: 1.0.0
+repository: https://github.com/Phenek/flutter_tanstack_query/tree/main/packages/tanstack_query
+
+environment:
+  sdk: ">=2.14.0 <4.0.0"
+  flutter: ">=1.17.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.0.5
+  flutter_hooks: ^0.21.2
+  async: ^2.10.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^6.0.0
+  test: ^1.26.3
