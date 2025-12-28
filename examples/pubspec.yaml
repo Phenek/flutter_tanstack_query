@@ -9,8 +9,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  http: ^1.6.0
+  flutter_hooks: ^0.21.3
   tanstack_query:
-    path: ../
+    path: ../packages/tanstack_query
 
 dev_dependencies:
   flutter_test:

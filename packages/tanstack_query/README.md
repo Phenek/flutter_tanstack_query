@@ -4,7 +4,7 @@
 [![Pub points](https://img.shields.io/pub/points/tanstack_query.svg)](https://pub.dev/packages/tanstack_query/score)
 [![Likes](https://img.shields.io/pub/likes/tanstack_query.svg)](https://pub.dev/packages/tanstack_query)
 
-tanstack_query — follow the React Query (tanstack v5) for javascript
+# 🏖️ Tanstack Query For Flutter — follow the React Query (tanstack v5) for javascript
 
 This package provides a Flutter implementation of the query/cache patterns used by
 [tanstack/react-query v5](https://tanstack.com/query/latest/docs/framework/react/overview). It focuses on

@@ -5,7 +5,7 @@ import 'pages/infinity_page.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 
 void main() {
-  queryClient = QueryClient(
+  var queryClient = QueryClient(
     defaultOptions: const DefaultOptions(
       queries: QueryDefaultOptions(
         enabled: true,
@@ -19,7 +19,9 @@ void main() {
         MutationCache(config: MutationCacheConfig(onError: (e) => print(e))),
   );
 
-  runApp(const App());
+  runApp(
+    QueryClientProvider(client: queryClient, child: const App()),
+  );
 }
 
 class App extends HookWidget {

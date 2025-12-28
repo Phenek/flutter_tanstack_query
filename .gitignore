@@ -53,6 +53,7 @@ build/
 .cache-loader
 **/doc/api/
 website/
+website.com/
 
 # ---------------------------------------------------------------------
 # Logs

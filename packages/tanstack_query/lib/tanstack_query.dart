@@ -1,5 +1,6 @@
 library tanstack_query;
 
+export 'src/providers/query_client_provider.dart';
 export 'src/hooks/use_query.dart';
 export 'src/hooks/use_infinite_query.dart';
 export 'src/hooks/use_mutation.dart';

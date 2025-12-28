@@ -1,6 +1,5 @@
 import 'package:tanstack_query/tanstack_query.dart';
 
-QueryClient queryClient = QueryClient();
 final cacheQuery = <String, CacheQuery<dynamic>>{};
 
 class QueryClient {
@@ -39,7 +38,7 @@ class QueryClient {
     }
   }
 
-  refetchOnRestart() {
+  void refetchOnRestart() {
     _listeners.forEach((key, listenersList) {
       for (var listener in listenersList) {
         if (listener.refetchOnRestart ?? defaultOptions.queries.refetchOnRestart) {
@@ -49,7 +48,7 @@ class QueryClient {
     });
   }
 
-  refetchOnReconnect() {
+  void refetchOnReconnect() {
     _listeners.forEach((key, listenersList) {
       for (var listener in listenersList) {
         if (listener.refetchOnReconnect ?? defaultOptions.queries.refetchOnReconnect) {

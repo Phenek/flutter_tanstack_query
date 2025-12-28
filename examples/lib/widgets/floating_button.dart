@@ -12,14 +12,15 @@ class FloatingButton extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    final queryClient = useQueryClient();
     final controller = useTextEditingController();
 
     final addTodoMutation = useMutation(
       mutationFn: (Todo body) => CreateTodoApi.request(body),
       onSuccess: (created) {
         // invalidate the todos list so it refetches with the new item
-        QueryClient.instance.invalidateQueries(queryKey: ["Infinite", GetAllTodosApi.name]);
-        QueryClient.instance.invalidateQueries(queryKey: ["Classical", GetAllTodosApi.name]);
+        queryClient.invalidateQueries(queryKey: ["Infinite", GetAllTodosApi.name]);
+        queryClient.invalidateQueries(queryKey: ["Classical", GetAllTodosApi.name]);
       },
     );
 
