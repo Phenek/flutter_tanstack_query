@@ -211,10 +211,10 @@ packages:
   tanstack_query:
     dependency: "direct main"
     description:
-      path: "../packages/tanstack_query"
+      path: ".."
       relative: true
     source: path
-    version: "1.0.0"
+    version: "1.0.1"
   term_glyph:
     dependency: transitive
     description:

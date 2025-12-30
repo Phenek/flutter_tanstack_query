@@ -2,6 +2,22 @@ import 'package:tanstack_query/tanstack_query.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter/material.dart';
 
+/// Subscribes to a query identified by [queryKey] and manages its lifecycle.
+///
+/// [queryFn] is called to fetch data. Returns a [QueryResult<T>] that contains
+/// `data`, `error`, and `status` flags that can be used by widgets.
+///
+/// Parameters:
+/// - [queryFn]: Function that returns a `Future<T>` with the data.
+/// - [queryKey]: A list of objects uniquely identifying the query.
+/// - [staleTime]: Duration in milliseconds after which cached data is considered
+///   stale and will be refetched when `useQuery` runs (default behavior uses
+///   `DefaultOptions`).
+/// - [enabled]: If `false`, disables automatic fetching until set to `true`.
+/// - [refetchOnRestart]: When `true`, refetches on app restart.
+/// - [refetchOnReconnect]: When `true`, refetches on reconnect.
+///
+/// Returns a [QueryResult<T>] representing the current query state and data.
 QueryResult<T> useQuery<T>(
     {required Future<T> Function() queryFn,
     required List<Object> queryKey,
@@ -12,15 +28,15 @@ QueryResult<T> useQuery<T>(
   final cacheKey = queryKeyToCacheKey(queryKey);
   var cacheEntry = cacheQuery[cacheKey];
   var isFirstRequest = useRef(true);
-  final callerId = useMemoized(() => DateTime.now().microsecondsSinceEpoch.toString(), []);
-    final result = useState<QueryResult<T>>(cacheEntry != null && cacheEntry.result.isSuccess
-        ? QueryResult<T>(
-          cacheKey,
-          cacheEntry.result.status,
-        cacheEntry.result.data as T?,
-        cacheEntry.result.error,
-        isFetching: cacheEntry.result.isFetching)
-      : QueryResult<T>(cacheKey, QueryStatus.pending, null, null, isFetching: false));
+  final callerId =
+      useMemoized(() => DateTime.now().microsecondsSinceEpoch.toString(), []);
+  final result = useState<QueryResult<T>>(
+      cacheEntry != null && cacheEntry.result.isSuccess
+          ? QueryResult<T>(cacheKey, cacheEntry.result.status,
+              cacheEntry.result.data as T?, cacheEntry.result.error,
+              isFetching: cacheEntry.result.isFetching)
+          : QueryResult<T>(cacheKey, QueryStatus.pending, null, null,
+              isFetching: false));
   late QueryCacheListener queryCacheListener;
   var isMounted = true;
 
@@ -31,7 +47,8 @@ QueryResult<T> useQuery<T>(
     }
 
     cacheQuery[cacheKey] = CacheQuery(queryResult, DateTime.now());
-    QueryClient.instance.notifyUpdate(cacheKey, queryResult, excludeCallerId: callerId);
+    QueryClient.instance
+        .notifyUpdate(cacheKey, queryResult, excludeCallerId: callerId);
   }
 
   void fetch() {
@@ -42,14 +59,18 @@ QueryResult<T> useQuery<T>(
     // If there's no cache entry, or there is no currently running fetch (or it finished/errored),
     // create a new fetch. This ensures we can refetch stale data even when cached data exists.
     if (cacheEntry == null ||
-      (cacheEntry.queryFnRunning == null ||
-        cacheEntry.queryFnRunning!.isCompleted ||
-        cacheEntry.queryFnRunning!.hasError)) {
-      var queryResult = QueryResult<T>(cacheKey, QueryStatus.pending, null, null, isFetching: true);
+        (cacheEntry.queryFnRunning == null ||
+            cacheEntry.queryFnRunning!.isCompleted ||
+            cacheEntry.queryFnRunning!.hasError)) {
+      var queryResult = QueryResult<T>(
+          cacheKey, QueryStatus.pending, null, null,
+          isFetching: true);
 
       var futureFetch = TrackedFuture(queryFn());
 
-      cacheQuery[cacheKey] = cacheEntry = CacheQuery<T>(queryResult, DateTime.now(), queryFnRunning: futureFetch);
+      cacheQuery[cacheKey] = cacheEntry = CacheQuery<T>(
+          queryResult, DateTime.now(),
+          queryFnRunning: futureFetch);
 
       shouldUpdateTheCache = true;
     }
@@ -58,13 +79,16 @@ QueryResult<T> useQuery<T>(
     if (isMounted) result.value = cacheEntry.result as QueryResult<T>;
 
     futureFetch?.then((value) {
-      final queryResult = QueryResult<T>(cacheKey, QueryStatus.success, value, null, isFetching: false);
+      final queryResult = QueryResult<T>(
+          cacheKey, QueryStatus.success, value, null,
+          isFetching: false);
       if (isMounted) result.value = queryResult;
       if (shouldUpdateTheCache) updateCache(queryResult);
 
       QueryClient.instance.queryCache?.config.onSuccess?.call(value);
     }).catchError((e) {
-      final queryResult = QueryResult<T>(cacheKey, QueryStatus.error, null, e, isFetching: false);
+      final queryResult = QueryResult<T>(cacheKey, QueryStatus.error, null, e,
+          isFetching: false);
       if (isMounted) result.value = queryResult;
       if (shouldUpdateTheCache) updateCache(queryResult);
 
@@ -73,14 +97,23 @@ QueryResult<T> useQuery<T>(
   }
 
   useEffect(() {
-    if ((enabled ?? QueryClient.instance.defaultOptions.queries.enabled) == false) return null;
+    if ((enabled ?? QueryClient.instance.defaultOptions.queries.enabled) ==
+        false) {
+      return null;
+    }
 
-    bool shouldFetch = result.value.data == null || result.value.isError || result.value.key != cacheKey;
+    bool shouldFetch = result.value.data == null ||
+        result.value.isError ||
+        result.value.key != cacheKey;
 
     //Check StaleTime here
-    if (isFirstRequest.value == true && staleTime != double.infinity && cacheEntry != null) {
+    if (isFirstRequest.value == true &&
+        staleTime != double.infinity &&
+        cacheEntry != null) {
       staleTime ??= 0;
-      final isStale = DateTime.now().difference(cacheEntry.timestamp).inMilliseconds > staleTime!;
+      final isStale =
+          DateTime.now().difference(cacheEntry.timestamp).inMilliseconds >
+              staleTime!;
       shouldFetch = shouldFetch || isStale;
     }
 
@@ -95,17 +128,21 @@ QueryResult<T> useQuery<T>(
 
         // Accept dynamic payloads from core cache; convert to QueryResult as needed
         if (newResult == null) {
-          result.value = QueryResult<T>(cacheKey, QueryStatus.pending, null, null, isFetching: false);
+          result.value = QueryResult<T>(
+              cacheKey, QueryStatus.pending, null, null,
+              isFetching: false);
         } else {
-          result.value = QueryResult<T>(cacheKey, newResult.status, newResult.data as T?, newResult.error, isFetching: newResult.isFetching);
+          result.value = QueryResult<T>(
+              cacheKey, newResult.status, newResult.data as T?, newResult.error,
+              isFetching: newResult.isFetching);
         }
       } catch (e) {
         debugPrint(e.toString());
       }
     }
 
-    queryCacheListener =
-        QueryCacheListener(callerId, false, fetch, listenCacheUpdate, refetchOnRestart, refetchOnReconnect);
+    queryCacheListener = QueryCacheListener(callerId, false, fetch,
+        listenCacheUpdate, refetchOnRestart, refetchOnReconnect);
     QueryClient.instance.addListener(queryKey, queryCacheListener);
 
     return () {

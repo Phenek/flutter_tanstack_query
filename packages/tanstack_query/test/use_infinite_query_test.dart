@@ -10,7 +10,8 @@ void main() {
     cacheQuery.clear();
   });
 
-  testWidgets('should fetch initial page and succeed', (WidgetTester tester) async {
+  testWidgets('should fetch initial page and succeed',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
     await tester.pumpWidget(MaterialApp(
@@ -47,7 +48,8 @@ void main() {
     expect(cached.data, equals([1]));
   });
 
-  testWidgets('should fetch next page when fetchNextPage is called', (WidgetTester tester) async {
+  testWidgets('should fetch next page when fetchNextPage is called',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
     await tester.pumpWidget(MaterialApp(
@@ -83,7 +85,8 @@ void main() {
     expect(holder.value!.data, equals([1, 2]));
   });
 
-  testWidgets('should set error state when initial fetch fails', (WidgetTester tester) async {
+  testWidgets('should set error state when initial fetch fails',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
     await tester.pumpWidget(MaterialApp(
@@ -105,15 +108,19 @@ void main() {
     ));
 
     // pending then settle to error
-    expect(holder.value!.status, anyOf(equals(QueryStatus.pending), equals(QueryStatus.error)));
+    expect(holder.value!.status,
+        anyOf(equals(QueryStatus.pending), equals(QueryStatus.error)));
     await tester.pumpAndSettle();
     expect(holder.value!.status, equals(QueryStatus.error));
     // the hook reports the error in the cache
     final key = queryKeyToCacheKey(['infinite', 'init-error']);
-    expect((cacheQuery[key]!.result as InfiniteQueryResult<int>).error.toString(), contains('boom'));
+    expect(
+        (cacheQuery[key]!.result as InfiniteQueryResult<int>).error.toString(),
+        contains('boom'));
   });
 
-  testWidgets('should set error state when fetching next page fails', (WidgetTester tester) async {
+  testWidgets('should set error state when fetching next page fails',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
     await tester.pumpWidget(MaterialApp(
@@ -156,7 +163,8 @@ void main() {
     expect(nextCached.data, equals(<int>[]));
   });
 
-  testWidgets('should debounce when queryKey changes and debounceTime is set', (WidgetTester tester) async {
+  testWidgets('should debounce when queryKey changes and debounceTime is set',
+      (WidgetTester tester) async {
     bool toggled = false;
 
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
@@ -177,7 +185,9 @@ void main() {
           holder.value = result;
           return Column(
             children: [
-              ElevatedButton(onPressed: () => setState(() => toggled = true), child: Text('toggle')),
+              ElevatedButton(
+                  onPressed: () => setState(() => toggled = true),
+                  child: Text('toggle')),
             ],
           );
         });
@@ -193,9 +203,14 @@ void main() {
     await tester.pump(); // begin rebuild + debounce timer set
 
     // immediately after toggle it should reflect loading (pending) and empty data
-    expect(holder.value!.status, anyOf(equals(QueryStatus.pending), equals(QueryStatus.error), equals(QueryStatus.success)));
+    expect(
+        holder.value!.status,
+        anyOf(equals(QueryStatus.pending), equals(QueryStatus.error),
+            equals(QueryStatus.success)));
     // For the pending case we expect the data to be empty
-    if (holder.value!.status == QueryStatus.pending) expect(holder.value!.data, equals(<int>[]));
+    if (holder.value!.status == QueryStatus.pending) {
+      expect(holder.value!.data, equals(<int>[]));
+    }
 
     // wait longer than debounce + query delay to let fetch finish
     await tester.pump(Duration(milliseconds: 120));
@@ -206,7 +221,9 @@ void main() {
     expect(holder.value!.data, equals([1]));
   });
 
-  testWidgets('should not crash if widget unmounts during in-flight next-page fetch', (WidgetTester tester) async {
+  testWidgets(
+      'should not crash if widget unmounts during in-flight next-page fetch',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
     await tester.pumpWidget(MaterialApp(

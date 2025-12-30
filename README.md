@@ -4,12 +4,22 @@
 [![Pub points](https://img.shields.io/pub/points/tanstack_query.svg)](https://pub.dev/packages/tanstack_query/score)
 [![Likes](https://img.shields.io/pub/likes/tanstack_query.svg)](https://pub.dev/packages/tanstack_query)
 
-# 🏖️ Tanstack Query For Flutter — follow the React Query (tanstack v5) for javascript
+# 🏖️ Flutter TanStack Query
 
 This package provides a Flutter implementation of the query/cache patterns used by
-[tanstack/react-query v5](https://tanstack.com/query/latest/docs/framework/react/overview). It focuses on
-fetching, caching, invalidation and background updates while mirroring the high level
-concepts and APIs you're used to from React Query.
+[tanstack/react-query v5](https://tanstack.com/query/latest/docs/framework/react/overview).
+
+Flutter TanStack Query is maintained by independent Flutter developers and is not affiliated with the official TanStack team. This librairy and documentation is a COPY CAT as it closely follows TanStack Query's API architecture and design, and intentionally mirrors every aspects of the JavaScript library.
+
+An async state management library built to simplify fetching, caching, synchronizing, and updating server state.
+
+- Protocol‑agnostic fetching (REST, GraphQL, promises, etc.)
+- Caching, refetching, pagination & infinite scroll
+- Mutations, dependent queries & background updates
+- Prefetching, cancellation & React Suspense support
+
+### <a href="https://flutter-tanstack.com">Read the docs →</b></a>
+
 
 ## Key concepts
 - QueryClient — the root object that owns the cache and global defaults.
@@ -21,19 +31,25 @@ concepts and APIs you're used to from React Query.
 Instantiate a basic `QueryClient` for your app. Example:
 
 ```dart
-// Create a client with default options and cache handlers
-queryClient = QueryClient(
-  defaultOptions: const DefaultOptions(
-    queries: QueryDefaultOptions(
-      enabled: true,
-      staleTime: 0,
-      refetchOnRestart: false,
-      refetchOnReconnect: false,
+void main() {
+  var queryClient = QueryClient(
+    defaultOptions: const DefaultOptions(
+      queries: QueryDefaultOptions(
+        enabled: true,
+        staleTime: 0,
+        refetchOnRestart: false,
+        refetchOnReconnect: false,
+      ),
     ),
-  ),
-  queryCache: QueryCache(config: QueryCacheConfig(onError: (e) => print(e))),
-  mutationCache: MutationCache(config: MutationCacheConfig(onError: (e) => print(e))),
-);
+    queryCache: QueryCache(config: QueryCacheConfig(onError: (e) => print(e))),
+    mutationCache:
+        MutationCache(config: MutationCacheConfig(onError: (e) => print(e))),
+  );
+
+  runApp(
+    QueryClientProvider(client: queryClient, child: const App()),
+  );
+}
 ```
 Example: Queries, Mutations and Invalidation (tanstack style)
 
@@ -59,25 +75,6 @@ Future<List<Map<String, dynamic>>> getTodos() async {
 Future<Map<String, dynamic>> postTodo(Map<String, dynamic> todo) async {
   await Future.delayed(Duration(milliseconds: 150));
   return todo; // in a real app you'd POST and return the created item
-}
-
-void main() {
-
-  queryClient = QueryClient(
-    defaultOptions: const DefaultOptions(
-      queries: QueryDefaultOptions(
-        enabled: true,
-        staleTime: 0,
-        refetchOnRestart: false,
-        refetchOnReconnect: false,
-      ),
-    ),
-    queryCache: QueryCache(config: QueryCacheConfig(onError: (e) => print(e))),
-    mutationCache: MutationCache(config: MutationCacheConfig(onError: (e) => print(e))),
-  );
-
-  runApp(MaterialApp(home: Todos()),
-  );
 }
 
 class Todos extends HookWidget {

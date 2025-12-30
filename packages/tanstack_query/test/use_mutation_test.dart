@@ -10,7 +10,8 @@ void main() {
   });
 
 // (setUp is declared above)
-  testWidgets('should mutate and succeed when mutate is called', (WidgetTester tester) async {
+  testWidgets('should mutate and succeed when mutate is called',
+      (WidgetTester tester) async {
     String? successData;
     final holder = ValueNotifier<MutationResult<String, String>?>(null);
 
@@ -50,7 +51,8 @@ void main() {
     expect(successData, equals('ok'));
   });
 
-  testWidgets('should mutate and fail when mutate is called', (WidgetTester tester) async {
+  testWidgets('should mutate and fail when mutate is called',
+      (WidgetTester tester) async {
     Object? errorObj;
     final holder = ValueNotifier<MutationResult<String, String>?>(null);
 

@@ -12,7 +12,7 @@ dependencies:
   http: ^1.6.0
   flutter_hooks: ^0.21.3
   tanstack_query:
-    path: ../packages/tanstack_query
+    path: ../
 
 dev_dependencies:
   flutter_test:

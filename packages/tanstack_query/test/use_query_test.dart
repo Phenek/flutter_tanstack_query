@@ -70,7 +70,9 @@ void main() {
 
     // wait for the hook to update to error status (with a small timeout)
     var tries = 0;
-    while ((holder.value == null || holder.value!.status == QueryStatus.pending) && tries < 20) {
+    while (
+        (holder.value == null || holder.value!.status == QueryStatus.pending) &&
+            tries < 20) {
       await tester.pump(Duration(milliseconds: 10));
       tries++;
     }
@@ -88,7 +90,8 @@ void main() {
     }
   });
 
-  testWidgets('should not fetch when enabled is false', (WidgetTester tester) async {
+  testWidgets('should not fetch when enabled is false',
+      (WidgetTester tester) async {
     var called = false;
 
     await tester.pumpWidget(MaterialApp(
@@ -112,7 +115,8 @@ void main() {
     expect(called, isFalse);
   });
 
-  testWidgets('should fetch when enabled is changed from false to true', (WidgetTester tester) async {
+  testWidgets('should fetch when enabled is changed from false to true',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<QueryResult<String>?>(null);
     var called = 0;
 
@@ -169,7 +173,8 @@ void main() {
     final holder = ValueNotifier<QueryResult<String>?>(null);
 
     // populate cache with old timestamp
-    cacheQuery[key] = CacheQuery(QueryResult<String>(key, QueryStatus.success, 'old', null),
+    cacheQuery[key] = CacheQuery(
+        QueryResult<String>(key, QueryStatus.success, 'old', null),
         DateTime.now().subtract(Duration(milliseconds: 200)));
 
     // removed external callback; assert on the rendered UI
@@ -198,14 +203,18 @@ void main() {
     expect(holder.value!.data, equals('fresh'));
     // cache should be updated with fresh value
     final cacheKey = queryKeyToCacheKey(['stale-key']);
-    expect((cacheQuery[cacheKey]!.result as QueryResult<String>).data, equals('fresh'));
+    expect((cacheQuery[cacheKey]!.result as QueryResult<String>).data,
+        equals('fresh'));
   });
 
-  testWidgets('should not refetch when data is not null and not stale', (WidgetTester tester) async {
+  testWidgets('should not refetch when data is not null and not stale',
+      (WidgetTester tester) async {
     final key = queryKeyToCacheKey(['fresh-key']);
 
     // populate cache with recent timestamp
-    cacheQuery[key] = CacheQuery(QueryResult<String>(key, QueryStatus.success, 'cached', null), DateTime.now());
+    cacheQuery[key] = CacheQuery(
+        QueryResult<String>(key, QueryStatus.success, 'cached', null),
+        DateTime.now());
 
     var called = false;
 

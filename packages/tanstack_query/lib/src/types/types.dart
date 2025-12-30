@@ -1,8 +1,34 @@
 import 'dart:async';
 
-enum QueryStatus { pending, error, success }
-enum MutationStatus { idle, pending, error, success }
+/// Status values for queries.
+enum QueryStatus {
+  /// The query is scheduled or currently fetching.
+  pending,
 
+  /// The query completed with an error.
+  error,
+
+  /// The query completed successfully.
+  success
+}
+
+/// Status values for mutations.
+enum MutationStatus {
+  /// The mutation has not started yet.
+  idle,
+
+  /// The mutation is in progress.
+  pending,
+
+  /// The mutation finished with an error.
+  error,
+
+  /// The mutation finished successfully.
+  success
+}
+
+/// Simple wrapper to track whether a `Future` has completed or failed. Used by
+/// the cache to detect running or errored fetches.
 class TrackedFuture<T> implements Future<T> {
   final Future<T> _future;
   bool _isCompleted = false;
@@ -21,13 +47,21 @@ class TrackedFuture<T> implements Future<T> {
     });
   }
 
+  /// `true` if the underlying future has completed.
   bool get isCompleted => _isCompleted;
+
+  /// `true` if the underlying future completed with an error.
   bool get hasError => _hasError;
+
+  /// The successful result, if available.
   T? get result => _result;
+
+  /// The error thrown by the underlying future, if any.
   Object? get error => _error;
 
   @override
-  Future<S> then<S>(FutureOr<S> Function(T value) onValue, {Function? onError}) {
+  Future<S> then<S>(FutureOr<S> Function(T value) onValue,
+      {Function? onError}) {
     return _future.then(onValue, onError: onError);
   }
 

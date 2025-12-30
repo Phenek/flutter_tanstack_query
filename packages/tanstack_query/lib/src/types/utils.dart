@@ -1,10 +1,13 @@
 import 'dart:convert';
 
 // Custom encoder for enums
+/// Converts enum values and other items into a string form suitable for
+/// JSON encoding by `queryKeyToCacheKey`.
 dynamic customEncode(dynamic item) {
   return item.toString();
 }
 
+/// Serializes a [queryKey] into a deterministic string usable as a cache key.
 String queryKeyToCacheKey(List<Object> queryKey) {
   // Encode the queryKey to JSON using the custom encoder
   String json = jsonEncode(queryKey, toEncodable: customEncode);
