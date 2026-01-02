@@ -4,7 +4,6 @@ import 'package:example/models/check.dart';
 import 'package:example/models/pagination.dart';
 import 'package:example/models/todo.dart';
 import 'package:example/conf/todo_store.dart';
-import 'package:flutter/src/foundation/change_notifier.dart';
 
 // ---------------------------------------------------------------------------
 // Fake API classes (in-memory) — these mimic your GetEntityApi pattern
@@ -44,8 +43,9 @@ class CheckTodoApi {
         Todo(id: todo.id, title: todo.title, completed: checkForm.check);
     final result = await TodoStore.update(updated);
 
-    if (result == null)
+    if (result == null) {
       throw Exception('Failed to update todo: id=${checkForm.id}');
+    }
     return result;
   }
 }

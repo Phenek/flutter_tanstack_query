@@ -14,9 +14,9 @@ void main() {
         refetchOnReconnect: false,
       ),
     ),
-    queryCache: QueryCache(config: QueryCacheConfig(onError: (e) => print(e))),
+    queryCache: QueryCache(config: QueryCacheConfig(onError: (e) => debugPrint(e.toString()))),
     mutationCache:
-        MutationCache(config: MutationCacheConfig(onError: (e) => print(e))),
+        MutationCache(config: MutationCacheConfig(onError: (e) => debugPrint(e.toString()))),
   );
 
   runApp(
