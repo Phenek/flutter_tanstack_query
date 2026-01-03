@@ -1,4 +1,6 @@
 import 'subscribable.dart';
+import 'mutation.dart';
+import 'query_client.dart';
 
 /// Configuration callbacks for mutation lifecycle events such as
 /// `onMutate`, `onSuccess`, and `onError`.
@@ -62,6 +64,13 @@ class MutationCache extends Subscribable<MutationCacheListener> {
     _notifySubscribers(MutationCacheNotifyEvent(NotifyEventType.removed, mutation));
   }
 
+  /// Build a new [Mutation] and add it to the cache. The mutation will be
+  /// owned by the cache and can notify observers.
+  Mutation<T, P> build<T, P>(QueryClient client, MutationOptions<T, P> options) {
+    final m = Mutation<T, P>(client, options);
+    add(m);
+    return m;
+  }
 
   void _notifySubscribers(MutationCacheNotifyEvent event) {
     // Delegate to Subscribable to iterate and safely call subscribers.

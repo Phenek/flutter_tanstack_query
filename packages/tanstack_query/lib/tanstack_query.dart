@@ -13,6 +13,8 @@ export 'src/core/options.dart';
 export 'src/core/query_cache.dart';
 export 'src/core/mutation_types.dart';
 export 'src/core/mutation_cache.dart';
+export 'src/core/mutation.dart';
+export 'src/core/mutation_observer.dart';
 export 'src/core/types.dart';
 export 'src/core/query_types.dart';
 export 'src/core/utils.dart';

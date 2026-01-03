@@ -19,40 +19,48 @@ MutationResult<T, P> useMutation<T, P>(
     void Function(T?)? onSuccess,
     void Function(Object?)? onError,
     void Function(T?, Object?)? onSettle}) {
-  final state = useState<MutationState<T>>(
-      MutationState<T>(null, MutationStatus.idle, null));
-  var isMounted = true;
-
-  useEffect(() {
-    state.value = MutationState<T>(null, MutationStatus.idle, null);
-    return () {
-      isMounted = false;
-    };
-  }, []);
-
   final queryClient = useQueryClient();
 
-  void mutate(P params) async {
-    if (!isMounted) return;
-    state.value = MutationState<T>(null, MutationStatus.pending, null);
-    try {
-      final data = await mutationFn(params);
-      if (!isMounted) return;
-      state.value = MutationState<T>(data, MutationStatus.success, null);
-      onSuccess?.call(data);
-      onSettle?.call(data, null);
-      queryClient.mutationCache.config.onSuccess?.call(data);
-      queryClient.mutationCache.config.onSettled?.call(data, null);
-    } catch (e) {
-      if (!isMounted) return;
-      state.value = MutationState<T>(null, MutationStatus.error, e);
-      onError?.call(e);
-      onSettle?.call(null, e);
-      queryClient.mutationCache.config.onError?.call(e);
-      queryClient.mutationCache.config.onSettled?.call(null, e);
-    }
+  // Create observer once per hook instance
+  final observer = useMemoized<MutationObserver<T, P>>(() => MutationObserver<T, P>(
+        queryClient,
+        MutationOptions<T, P>(
+          mutationFn: mutationFn,
+          onSuccess: onSuccess,
+          onError: onError,
+          onSettled: onSettle,
+        ),
+      ));
+
+  // Keep observer options in sync when parameters change
+  useEffect(() {
+    observer.setOptions(MutationOptions<T, P>(
+      mutationFn: mutationFn,
+      onSuccess: onSuccess,
+      onError: onError,
+      onSettled: onSettle,
+    ));
+    return null;
+  }, [observer, mutationFn, onSuccess, onError, onSettle]);
+
+  // Local result state that mirrors the observer's current result
+  final resultState = useState<MutationObserverResult<T, P>>(observer.getCurrentResult());
+
+  useEffect(() {
+    // subscribe updates
+    final unsubscribe = observer.subscribe((res) {
+      resultState.value = res;
+    });
+    // initialize
+    resultState.value = observer.getCurrentResult();
+    return () => unsubscribe();
+  }, [observer]);
+
+  // Mutate function mirrors the observer mutate API and swallows errors
+  void mutate(P params) {
+    observer.mutate(params).then((_) {}, onError: (_) {});
   }
 
   return MutationResult<T, P>(
-      mutate, state.value.data, state.value.status, state.value.error);
+      mutate, resultState.value.data, resultState.value.status, resultState.value.error);
 }

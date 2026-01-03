@@ -29,8 +29,7 @@ QueryResult<T> useQuery<T>(
   final cacheKey = queryKeyToCacheKey(queryKey);
   var cacheEntry = queryClient.queryCache[cacheKey];
   var isFirstRequest = useRef(true);
-  final callerId =
-      useMemoized(() => DateTime.now().microsecondsSinceEpoch.toString(), []);
+  final callerId = useMemoized(() => DateTime.now().microsecondsSinceEpoch.toString(), []);
   final result = useState<QueryResult<T>>(
       cacheEntry != null && cacheEntry.result.isSuccess
           ? QueryResult<T>(cacheKey, cacheEntry.result.status,
