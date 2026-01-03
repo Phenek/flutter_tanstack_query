@@ -2,12 +2,18 @@
 class QueryDefaultOptions {
   final bool enabled;
   final double? staleTime;
+  final int retry;
+  final int retryDelay;
+  final int gcTime;
   final bool refetchOnRestart;
   final bool refetchOnReconnect;
 
   const QueryDefaultOptions(
       {this.enabled = true,
       this.staleTime = 0,
+      this.retry = 0,
+      this.retryDelay = 1000,
+      this.gcTime = 5 * 60 * 1000,
       this.refetchOnRestart = true,
       this.refetchOnReconnect = true});
 }

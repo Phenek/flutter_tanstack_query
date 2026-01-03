@@ -1,6 +1,9 @@
 import 'types.dart';
 import 'utils.dart';
 import 'subscribable.dart';
+import 'query.dart';
+import 'query_client.dart';
+import 'query_types.dart';
 
 /// Configuration callbacks for query cache events like `onError`, `onSuccess` and `onSettled`.
 class QueryCacheConfig {
@@ -70,6 +73,9 @@ class QueryCache extends Subscribable<QueryCacheListener> {
 
   final Map<String, QueryCacheEntry<dynamic>> _cache = {};
 
+  // Map of built Query instances by cache key
+  final Map<String, dynamic> _queries = {};
+
   QueryCache({this.config = const QueryCacheConfig()});
 
   QueryCacheEntry? operator [](String key) => _cache[key];
@@ -93,6 +99,13 @@ class QueryCache extends Subscribable<QueryCacheListener> {
     final removed = _cache.remove(key);
     if (removed != null) {
       _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.removed, key, removed, callerId: callerId));
+    }
+    // Also remove any built Query instance
+    if (_queries.containsKey(key)) {
+      final q = _queries.remove(key);
+      try {
+        if (q != null && q is Query) q.cancel();
+      } catch (_) {}
     }
     return removed;
   }
@@ -163,5 +176,17 @@ class QueryCache extends Subscribable<QueryCacheListener> {
   void _notifyListeners(QueryCacheNotifyEvent event) {
     // Delegate to Subscribable to iterate and safely call listeners.
     notifyAll((l) => l(event));
+  }
+
+  /// Build or return an existing `Query` instance for the given options.
+  Query<T> build<T>(QueryClient client, QueryOptions<T> options) {
+    final cacheKey = queryKeyToCacheKey(options.queryKey);
+    if (_queries.containsKey(cacheKey)) {
+      return _queries[cacheKey] as Query<T>;
+    }
+
+    final q = Query<T>(client, options);
+    _queries[cacheKey] = q;
+    return q;
   }
 }

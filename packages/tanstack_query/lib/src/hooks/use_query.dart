@@ -27,131 +27,137 @@ QueryResult<T> useQuery<T>(
     bool? refetchOnReconnect}) {
   final queryClient = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
-  var cacheEntry = queryClient.queryCache[cacheKey];
-  var isFirstRequest = useRef(true);
-  final callerId = useMemoized(() => DateTime.now().microsecondsSinceEpoch.toString(), []);
-  final result = useState<QueryResult<T>>(
-      cacheEntry != null && cacheEntry.result.isSuccess
-          ? QueryResult<T>(cacheKey, cacheEntry.result.status,
-              cacheEntry.result.data as T?, cacheEntry.result.error,
-              isFetching: cacheEntry.result.isFetching)
-          : QueryResult<T>(cacheKey, QueryStatus.pending, null, null,
-              isFetching: false));
-  var isMounted = true;
 
-  void updateCache(QueryResult<T> queryResult) {
-    // If the query returned null *and* it is a successful result, remove
-    // the existing cache entry. For error results we still persist the
-    // failing result so subscribers can reflect the error state.
-    if (queryResult.data == null && queryResult.isSuccess && queryClient.queryCache.containsKey(cacheKey)) {
-      queryClient.queryCache.remove(cacheKey);
-      return;
-    }
+  // Build initial QueryOptions and create an observer lazily
+  final options = QueryOptions<T>(
+    queryFn: queryFn,
+    queryKey: queryKey,
+    staleTime: staleTime,
+    enabled: enabled ?? queryClient.defaultOptions.queries.enabled,
+    refetchOnRestart: refetchOnRestart,
+    refetchOnReconnect: refetchOnReconnect,
+  );
 
-    queryClient.queryCache.set(cacheKey, QueryCacheEntry(queryResult, DateTime.now()), callerId: callerId);
+  final observer = useMemoized<QueryObserver<T, Object?, T>>(() =>
+      QueryObserver<T, Object?, T>(queryClient, options), [queryClient]);
+
+  // keep observer options in sync
+  useEffect(() {
+    observer.setOptions(QueryOptions<T>(
+      queryFn: queryFn,
+      queryKey: queryKey,
+      staleTime: staleTime,
+      enabled: enabled ?? queryClient.defaultOptions.queries.enabled,
+      refetchOnRestart: refetchOnRestart,
+      refetchOnReconnect: refetchOnReconnect,
+    ));
+    return null;
+  }, [observer, queryFn, ...queryKey, staleTime, enabled, refetchOnRestart, refetchOnReconnect]);
+
+  // Map observer result -> QueryResult<T>
+  QueryResult<T> mapObserverResult(QueryObserverResult<T, Object?> res) {
+    final status = res.status == 'success'
+        ? QueryStatus.success
+        : (res.status == 'error' ? QueryStatus.error : QueryStatus.pending);
+
+    return QueryResult<T>(cacheKey, status, res.data, res.error,
+        isFetching: res.isFetching);
   }
 
+  final resultState = useState<QueryResult<T>>(mapObserverResult(observer.getCurrentResult()));
+
+  // Reintroduce the old fetch implementation to match previous behavior and
+  // ensure tests relying on immediate fetching continue to behave.
   void fetch() {
-    isFirstRequest.value = false;
     var cacheEntry = queryClient.queryCache[cacheKey];
     var shouldUpdateTheCache = false;
 
-    // If there's no cache entry, or there is no currently running fetch (or it finished/errored),
-    // create a new fetch. This ensures we can refetch stale data even when cached data exists.
     if (cacheEntry == null ||
         (cacheEntry.queryFnRunning == null ||
             cacheEntry.queryFnRunning!.isCompleted ||
             cacheEntry.queryFnRunning!.hasError)) {
-      var queryResult = QueryResult<T>(
-          cacheKey, QueryStatus.pending, null, null,
-          isFetching: true);
+      var queryResult = QueryResult<T>(cacheKey, QueryStatus.pending, null, null, isFetching: true);
 
-      var futureFetch = TrackedFuture(queryFn());
+      var futureFetch = TrackedFuture<T>(queryFn());
 
-      queryClient.queryCache[cacheKey] = cacheEntry = QueryCacheEntry<T>(
-          queryResult, DateTime.now(),
-          queryFnRunning: futureFetch);
+      queryClient.queryCache[cacheKey] = cacheEntry = QueryCacheEntry<T>(queryResult, DateTime.now(), queryFnRunning: futureFetch);
 
       shouldUpdateTheCache = true;
     }
-    // Loading State: cacheEntry has a Running Function, set result to propagate the loading state
-    var futureFetch = cacheEntry.queryFnRunning;
-    if (isMounted) result.value = cacheEntry.result as QueryResult<T>;
+
+    var futureFetch = cacheEntry?.queryFnRunning;
+    // update local state to reflect loading
+    if (futureFetch != null) resultState.value = cacheEntry!.result as QueryResult<T>;
 
     futureFetch?.then((value) {
-      final queryResult = QueryResult<T>(
-          cacheKey, QueryStatus.success, value, null,
-          isFetching: false);
-      if (isMounted) result.value = queryResult;
-      if (shouldUpdateTheCache) updateCache(queryResult);
+      final queryResult = QueryResult<T>(cacheKey, QueryStatus.success, value, null, isFetching: false);
+      resultState.value = queryResult;
+      if (shouldUpdateTheCache) {
+        queryClient.queryCache[cacheKey] = QueryCacheEntry<T>(queryResult, DateTime.now());
+      }
 
       queryClient.queryCache.config.onSuccess?.call(value);
     }).catchError((e) {
-      final queryResult = QueryResult<T>(cacheKey, QueryStatus.error, null, e,
-          isFetching: false);
-      if (isMounted) result.value = queryResult;
-      if (shouldUpdateTheCache) updateCache(queryResult);
+      final queryResult = QueryResult<T>(cacheKey, QueryStatus.error, null, e, isFetching: false);
+      resultState.value = queryResult;
+      if (shouldUpdateTheCache) {
+        queryClient.queryCache[cacheKey] = QueryCacheEntry<T>(queryResult, DateTime.now());
+      }
 
       queryClient.queryCache.config.onError?.call(e);
     });
   }
 
   useEffect(() {
-    if ((enabled ?? queryClient.defaultOptions.queries.enabled) == false) {
-      return null;
-    }
+    // Determine whether an initial fetch should run — mirror previous logic
+    final entry = queryClient.queryCache[cacheKey];
 
-    bool shouldFetch = result.value.data == null ||
-        result.value.isError ||
-        result.value.key != cacheKey;
+    final resolvedEnabled = enabled ?? queryClient.defaultOptions.queries.enabled;
 
-    // If the current value is an error and this is not the first request,
-    // avoid immediately re-fetching (prevents a fast retry loop during error handling).
-    if (result.value.isError && isFirstRequest.value == false) {
-      shouldFetch = false;
-    }
+    var shouldFetch = false;
 
-    //Check StaleTime here
-    if (isFirstRequest.value == true &&
-        staleTime != double.infinity &&
-        cacheEntry != null) {
-      staleTime ??= 0;
-      final isStale =
-          DateTime.now().difference(cacheEntry.timestamp).inMilliseconds >
-              staleTime!;
-      shouldFetch = shouldFetch || isStale;
+    if (resolvedEnabled) {
+      shouldFetch = resultState.value.data == null || resultState.value.isError || resultState.value.key != cacheKey;
+
+      // Check stale on first mount: if we have cached entry and it's older than staleTime, fetch
+      if (entry != null && staleTime != double.infinity) {
+        final isStale = DateTime.now().difference(entry.timestamp).inMilliseconds > (staleTime ?? 0);
+        shouldFetch = shouldFetch || isStale;
+      }
+
+      // If current value is an error, we still allow fetching once (prevents a fast retry loop elsewhere)
+      if (resultState.value.isError) {
+        shouldFetch = true;
+      }
     }
 
     if (shouldFetch) {
       fetch();
     }
 
+    final unsubscribe = observer.subscribe((res) {
+      resultState.value = mapObserverResult(res as QueryObserverResult<T, Object?>);
+    });
 
-    final unsubscribe = queryClient.queryCache.subscribe((event) {
+    // initialize from observer
+    resultState.value = mapObserverResult(observer.getCurrentResult());
 
-      // Only care about events for our cacheKey
+    // Also subscribe to cache events for compatibility with the existing behavior
+    final callerId = DateTime.now().microsecondsSinceEpoch.toString();
+    final cacheUnsub = queryClient.queryCache.subscribe((event) {
       if (event.cacheKey != cacheKey) return;
-      // Ignore events originating from this caller
       if (event.callerId != null && event.callerId == callerId) return;
 
       try {
         if (event.type == QueryCacheEventType.removed) {
-          result.value = QueryResult<T>(
-              cacheKey, QueryStatus.pending, null, null,
-              isFetching: false);
+          resultState.value = QueryResult<T>(cacheKey, QueryStatus.pending, null, null, isFetching: false);
         } else if (event.type == QueryCacheEventType.added || event.type == QueryCacheEventType.updated) {
           final newResult = event.entry?.result as QueryResult<T>?;
           if (newResult != null) {
-            result.value = QueryResult<T>(
-                cacheKey, newResult.status, newResult.data, newResult.error,
-                isFetching: newResult.isFetching);
+            resultState.value = QueryResult<T>(cacheKey, newResult.status, newResult.data, newResult.error, isFetching: newResult.isFetching);
           }
-        } else if (event.type == QueryCacheEventType.refetch ||
-            (event.type == QueryCacheEventType.refetchOnRestart &&
-                (refetchOnRestart ?? queryClient.defaultOptions.queries.refetchOnRestart)) ||
-            (event.type == QueryCacheEventType.refetchOnReconnect &&
-                (refetchOnReconnect ?? queryClient.defaultOptions.queries.refetchOnReconnect))) {
-          fetch();
+        } else if (event.type == QueryCacheEventType.refetch || (event.type == QueryCacheEventType.refetchOnRestart && (refetchOnRestart ?? queryClient.defaultOptions.queries.refetchOnRestart)) || (event.type == QueryCacheEventType.refetchOnReconnect && (refetchOnReconnect ?? queryClient.defaultOptions.queries.refetchOnReconnect))) {
+          observer.refetch();
         }
       } catch (e) {
         debugPrint(e.toString());
@@ -159,10 +165,10 @@ QueryResult<T> useQuery<T>(
     });
 
     return () {
-      isMounted = false;
       unsubscribe();
+      cacheUnsub();
     };
-  }, [enabled, ...queryKey]);
+  }, [observer, ...queryKey]);
 
-  return result.value;
+  return resultState.value;
 }

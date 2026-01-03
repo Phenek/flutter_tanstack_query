@@ -13,19 +13,29 @@ class QueryOptions<T> {
   /// Whether the query is enabled.
   final bool? enabled;
 
+  /// Retry options
+  final int? retry;
+  final int? retryDelay;
+
   /// Whether the query should refetch on app restart.
   final bool? refetchOnRestart;
 
   /// Whether the query should refetch on reconnect.
   final bool? refetchOnReconnect;
 
-  const QueryOptions({
+  /// Garbage collection time (milliseconds) after which unused queries are removed.
+  final int? gcTime;
+
+  QueryOptions({
     required this.queryFn,
     required this.queryKey,
     this.staleTime,
     this.enabled,
+    this.retry,
+    this.retryDelay,
     this.refetchOnRestart,
     this.refetchOnReconnect,
+    this.gcTime,
   });
 
   QueryOptions<T> copyWith({
@@ -33,16 +43,22 @@ class QueryOptions<T> {
     List<Object>? queryKey,
     double? staleTime,
     bool? enabled,
+    int? retry,
+    int? retryDelay,
     bool? refetchOnRestart,
     bool? refetchOnReconnect,
+    int? gcTime,
   }) {
     return QueryOptions<T>(
       queryFn: queryFn ?? this.queryFn,
       queryKey: queryKey ?? this.queryKey,
       staleTime: staleTime ?? this.staleTime,
       enabled: enabled ?? this.enabled,
+      retry: retry ?? this.retry,
+      retryDelay: retryDelay ?? this.retryDelay,
       refetchOnRestart: refetchOnRestart ?? this.refetchOnRestart,
       refetchOnReconnect: refetchOnReconnect ?? this.refetchOnReconnect,
+      gcTime: gcTime ?? this.gcTime,
     );
   }
 }
