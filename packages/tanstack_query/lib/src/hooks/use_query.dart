@@ -25,9 +25,9 @@ QueryResult<T> useQuery<T>(
     bool? enabled,
     bool? refetchOnRestart,
     bool? refetchOnReconnect}) {
-  final client = useQueryClient();
+  final queryClient = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
-  var cacheEntry = client.queryCache[cacheKey];
+  var cacheEntry = queryClient.queryCache[cacheKey];
   var isFirstRequest = useRef(true);
   final callerId =
       useMemoized(() => DateTime.now().microsecondsSinceEpoch.toString(), []);
@@ -44,17 +44,17 @@ QueryResult<T> useQuery<T>(
     // If the query returned null *and* it is a successful result, remove
     // the existing cache entry. For error results we still persist the
     // failing result so subscribers can reflect the error state.
-    if (queryResult.data == null && queryResult.isSuccess && client.queryCache.containsKey(cacheKey)) {
-      client.queryCache.remove(cacheKey);
+    if (queryResult.data == null && queryResult.isSuccess && queryClient.queryCache.containsKey(cacheKey)) {
+      queryClient.queryCache.remove(cacheKey);
       return;
     }
 
-    client.queryCache.set(cacheKey, QueryCacheEntry(queryResult, DateTime.now()), callerId: callerId);
+    queryClient.queryCache.set(cacheKey, QueryCacheEntry(queryResult, DateTime.now()), callerId: callerId);
   }
 
   void fetch() {
     isFirstRequest.value = false;
-    var cacheEntry = client.queryCache[cacheKey];
+    var cacheEntry = queryClient.queryCache[cacheKey];
     var shouldUpdateTheCache = false;
 
     // If there's no cache entry, or there is no currently running fetch (or it finished/errored),
@@ -69,7 +69,7 @@ QueryResult<T> useQuery<T>(
 
       var futureFetch = TrackedFuture(queryFn());
 
-      client.queryCache[cacheKey] = cacheEntry = QueryCacheEntry<T>(
+      queryClient.queryCache[cacheKey] = cacheEntry = QueryCacheEntry<T>(
           queryResult, DateTime.now(),
           queryFnRunning: futureFetch);
 
@@ -86,19 +86,19 @@ QueryResult<T> useQuery<T>(
       if (isMounted) result.value = queryResult;
       if (shouldUpdateTheCache) updateCache(queryResult);
 
-      client.queryCache.config.onSuccess?.call(value);
+      queryClient.queryCache.config.onSuccess?.call(value);
     }).catchError((e) {
       final queryResult = QueryResult<T>(cacheKey, QueryStatus.error, null, e,
           isFetching: false);
       if (isMounted) result.value = queryResult;
       if (shouldUpdateTheCache) updateCache(queryResult);
 
-      client.queryCache.config.onError?.call(e);
+      queryClient.queryCache.config.onError?.call(e);
     });
   }
 
   useEffect(() {
-    if ((enabled ?? client.defaultOptions.queries.enabled) == false) {
+    if ((enabled ?? queryClient.defaultOptions.queries.enabled) == false) {
       return null;
     }
 
@@ -128,7 +128,7 @@ QueryResult<T> useQuery<T>(
     }
 
 
-    final unsubscribe = client.queryCache.subscribe((event) {
+    final unsubscribe = queryClient.queryCache.subscribe((event) {
 
       // Only care about events for our cacheKey
       if (event.cacheKey != cacheKey) return;
@@ -149,9 +149,9 @@ QueryResult<T> useQuery<T>(
           }
         } else if (event.type == QueryCacheEventType.refetch ||
             (event.type == QueryCacheEventType.refetchOnRestart &&
-                (refetchOnRestart ?? client.defaultOptions.queries.refetchOnRestart)) ||
+                (refetchOnRestart ?? queryClient.defaultOptions.queries.refetchOnRestart)) ||
             (event.type == QueryCacheEventType.refetchOnReconnect &&
-                (refetchOnReconnect ?? client.defaultOptions.queries.refetchOnReconnect))) {
+                (refetchOnReconnect ?? queryClient.defaultOptions.queries.refetchOnReconnect))) {
           fetch();
         }
       } catch (e) {

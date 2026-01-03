@@ -30,6 +30,8 @@ MutationResult<T, P> useMutation<T, P>(
     };
   }, []);
 
+  final queryClient = useQueryClient();
+
   void mutate(P params) async {
     if (!isMounted) return;
     state.value = MutationState<T>(null, MutationStatus.pending, null);
@@ -39,13 +41,15 @@ MutationResult<T, P> useMutation<T, P>(
       state.value = MutationState<T>(data, MutationStatus.success, null);
       onSuccess?.call(data);
       onSettle?.call(data, null);
-      QueryClient.instance.mutationCache.config.onSuccess?.call(data);
+      queryClient.mutationCache.config.onSuccess?.call(data);
+      queryClient.mutationCache.config.onSettled?.call(data, null);
     } catch (e) {
       if (!isMounted) return;
       state.value = MutationState<T>(null, MutationStatus.error, e);
       onError?.call(e);
       onSettle?.call(null, e);
-      QueryClient.instance.mutationCache.config.onError?.call(e);
+      queryClient.mutationCache.config.onError?.call(e);
+      queryClient.mutationCache.config.onSettled?.call(null, e);
     }
   }
 

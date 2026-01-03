@@ -9,7 +9,6 @@ class Subscribable<TListener extends Function> {
   Subscribable();
 
   /// Subscribe with [listener]. Returns an unsubscribe function.
-  /// Subscribe with [listener]. Returns an unsubscribe function.
   void Function() subscribe(TListener listener) {
     _listeners.add(listener);
     onSubscribe();
@@ -35,15 +34,11 @@ class Subscribable<TListener extends Function> {
   void notifyAll(void Function(TListener) fn) {
     final listeners = List<TListener>.from(_listeners);
     // Debug: show notify count during tests (disabled in production)
-    // ignore: avoid_print
-    // print('Subscribable.notifyAll: ${listeners.length} listeners');
     for (var l in listeners) {
       try {
         fn(l);
-      } catch (e, st) {
+      } catch (e, _) {
         // Swallow errors from listeners to avoid disrupting other listeners.
-        // ignore: avoid_print
-        // print('Subscribable listener error: $e\n$st');
       }
     }
   }

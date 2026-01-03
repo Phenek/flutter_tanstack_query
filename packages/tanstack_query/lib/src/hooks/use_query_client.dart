@@ -10,8 +10,8 @@ import 'package:tanstack_query/tanstack_query.dart';
 ///
 /// Example:
 /// ```dart
-/// final client = useQueryClient();
-/// client.invalidateQueries(queryKey: ['todos']);
+/// final queryClient = useQueryClient();
+/// queryClient.invalidateQueries(queryKey: ['todos']);
 /// ```
 QueryClient useQueryClient() {
   final context = useContext();

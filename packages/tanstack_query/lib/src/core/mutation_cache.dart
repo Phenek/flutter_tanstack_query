@@ -9,10 +9,13 @@ class MutationCacheConfig {
   /// Called when a mutation succeeds with the returned data.
   final dynamic Function(dynamic data)? onSuccess;
 
+    /// Called when a query settles (either success or error).
+  final void Function(dynamic data, dynamic error)? onSettled;
+
   /// Called just before a mutation is executed (useful for optimistic updates).
   final dynamic Function()? onMutate;
 
-  MutationCacheConfig({this.onError, this.onSuccess, this.onMutate});
+  MutationCacheConfig({this.onError, this.onSuccess, this.onMutate, this.onSettled});
 }
 
 /// Types of events emitted by the cache.

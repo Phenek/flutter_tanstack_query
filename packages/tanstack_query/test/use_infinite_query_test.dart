@@ -4,17 +4,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 
 void main() {
+  late QueryClient client;
+
   setUp(() {
     // Ensure a fresh QueryClient instance and clear cache between tests
-    QueryClient();
-    QueryClient.instance.queryCache.clear();
+    client = QueryClient();
+    client.queryCache.clear();
   });
 
   testWidgets('should fetch initial page and succeed',
       (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
-    await tester.pumpWidget(QueryClientProvider(client: QueryClient.instance, child: MaterialApp(
+    await tester.pumpWidget(QueryClientProvider(client: client, child: MaterialApp(
       home: HookBuilder(
         builder: (context) {
           final result = useInfiniteQuery<int>(
@@ -44,7 +46,7 @@ void main() {
     expect(holder.value!.data, equals([1]));
     // verify the cache contains the initial page result
     final key = queryKeyToCacheKey(['infinite', 'init-success']);
-    final cached = (QueryClient.instance.queryCache[key]!.result as InfiniteQueryResult<int>);
+    final cached = (client.queryCache[key]!.result as InfiniteQueryResult<int>);
     expect(cached.data, equals([1]));
   });
 
@@ -52,7 +54,7 @@ void main() {
       (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
-    await tester.pumpWidget(QueryClientProvider(client: QueryClient.instance, child: MaterialApp(
+    await tester.pumpWidget(QueryClientProvider(client: client, child: MaterialApp(
       home: HookBuilder(
         builder: (context) {
           final result = useInfiniteQuery<int>(
@@ -89,7 +91,7 @@ void main() {
       (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
-    await tester.pumpWidget(QueryClientProvider(client: QueryClient.instance, child: MaterialApp(
+    await tester.pumpWidget(QueryClientProvider(client: client, child: MaterialApp(
       home: HookBuilder(
         builder: (context) {
           final result = useInfiniteQuery<int>(
@@ -115,7 +117,7 @@ void main() {
     // the hook reports the error in the cache
     final key = queryKeyToCacheKey(['infinite', 'init-error']);
     expect(
-        (QueryClient.instance.queryCache[key]!.result as InfiniteQueryResult<int>).error.toString(),
+        (client.queryCache[key]!.result as InfiniteQueryResult<int>).error.toString(),
         contains('boom'));
   });
 
@@ -123,7 +125,7 @@ void main() {
       (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
-    await tester.pumpWidget(QueryClientProvider(client: QueryClient.instance, child: MaterialApp(
+    await tester.pumpWidget(QueryClientProvider(client: client, child: MaterialApp(
       home: HookBuilder(
         builder: (context) {
           final result = useInfiniteQuery<int>(
@@ -158,7 +160,7 @@ void main() {
     expect(holder.value!.data, equals(<int>[]));
     // cache should reflect the error
     final nextKey = queryKeyToCacheKey(['infinite', 'next-error']);
-    final nextCached = QueryClient.instance.queryCache[nextKey]!.result as InfiniteQueryResult<int>;
+    final nextCached = client.queryCache[nextKey]!.result as InfiniteQueryResult<int>;
     expect(nextCached.status, equals(QueryStatus.error));
     expect(nextCached.data, equals(<int>[]));
   });
@@ -169,7 +171,7 @@ void main() {
 
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
-    await tester.pumpWidget(QueryClientProvider(client: QueryClient.instance, child: MaterialApp(
+    await tester.pumpWidget(QueryClientProvider(client: client, child: MaterialApp(
       home: StatefulBuilder(builder: (context, setState) {
         return HookBuilder(builder: (ctx) {
           final result = useInfiniteQuery<int>(
@@ -226,7 +228,7 @@ void main() {
       (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
-    await tester.pumpWidget(QueryClientProvider(client: QueryClient.instance, child: MaterialApp(
+    await tester.pumpWidget(QueryClientProvider(client: client, child: MaterialApp(
       home: HookBuilder(
         builder: (context) {
           final result = useInfiniteQuery<int>(

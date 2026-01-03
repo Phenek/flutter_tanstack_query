@@ -29,13 +29,13 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
   bool? refetchOnRestart,
   bool? refetchOnReconnect,
 }) {
-  final client = useQueryClient();
+  final queryClient = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
   final currentPage = useRef<int>(initialPageParam);
   var isFirstRequest = useRef(true);
   final callerId =
       useMemoized(() => DateTime.now().microsecondsSinceEpoch.toString(), []);
-  var cacheEntry = client.queryCache[cacheKey];
+  var cacheEntry = queryClient.queryCache[cacheKey];
   final result = useState<InfiniteQueryResult<T>>(
       cacheEntry != null && cacheEntry.result.isSuccess
           ? InfiniteQueryResult(
@@ -58,12 +58,12 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
 
   void updateCache(InfiniteQueryResult<T> queryResult,
       {TrackedFuture<dynamic>? queryFnRunning}) {
-    if (queryResult.data == null && client.queryCache.containsKey(cacheKey)) {
-      client.queryCache.remove(cacheKey);
+    if (queryResult.data == null && queryClient.queryCache.containsKey(cacheKey)) {
+      queryClient.queryCache.remove(cacheKey);
       return;
     }
 
-    client.queryCache.set(cacheKey,
+    queryClient.queryCache.set(cacheKey,
         QueryCacheEntry(queryResult, DateTime.now(), queryFnRunning: queryFnRunning),
         callerId: callerId);
   }
@@ -119,7 +119,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
       safeSetResult(queryResult);
       updateCache(queryResult);
 
-      client.queryCache.config.onSuccess?.call(pageData);
+      queryClient.queryCache.config.onSuccess?.call(pageData);
     }).catchError((e) {
       final queryResult = InfiniteQueryResult<T>(
         key: cacheKey,
@@ -133,13 +133,13 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
       safeSetResult(queryResult);
       updateCache(queryResult);
 
-      client.queryCache.config.onError?.call(e);
+      queryClient.queryCache.config.onError?.call(e);
     });
   }
 
   void fetch() {
     isFirstRequest.value = false;
-    var cacheEntry = client.queryCache[cacheKey];
+    var cacheEntry = queryClient.queryCache[cacheKey];
     var shouldUpdateTheCache = false;
 
     if (cacheEntry == null ||
@@ -159,7 +159,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
       var futureFetch = TrackedFuture(queryFn(initialPageParam));
 
       //create CacheEntry
-      client.queryCache[cacheKey] = cacheEntry =
+      queryClient.queryCache[cacheKey] = cacheEntry =
           QueryCacheEntry(queryResult, DateTime.now(), queryFnRunning: futureFetch);
     }
     // Loading State: cacheEntry has a Running Function, set result to propagate the loading state
@@ -184,7 +184,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
       if (isMounted) result.value = queryResult;
       if (shouldUpdateTheCache) updateCache(queryResult);
 
-      client.queryCache.config.onSuccess?.call(pageData);
+      queryClient.queryCache.config.onSuccess?.call(pageData);
     }).catchError((e) {
       final queryResult = InfiniteQueryResult<T>(
         key: cacheKey,
@@ -198,7 +198,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
       if (isMounted) result.value = queryResult;
       if (shouldUpdateTheCache) updateCache(queryResult);
 
-      client.queryCache.config.onError?.call(e);
+      queryClient.queryCache.config.onError?.call(e);
     });
   }
 
@@ -240,7 +240,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
   }
 
   useEffect(() {
-    if ((enabled ?? client.defaultOptions.queries.enabled) == false) { return null; }
+    if ((enabled ?? queryClient.defaultOptions.queries.enabled) == false) { return null; }
 
     if (debounceTime == null || isFirstRequest.value) {
       resetValues(currentPage, initialPageParam, result);
@@ -258,7 +258,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
     }
 
 
-    final unsubscribe = client.queryCache.subscribe((event) {
+    final unsubscribe = queryClient.queryCache.subscribe((event) {
       if (event.cacheKey != cacheKey) return;
       if (event.callerId != null && event.callerId == callerId) return;
 
@@ -286,9 +286,9 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
           }
         } else if (event.type == QueryCacheEventType.refetch ||
             (event.type == QueryCacheEventType.refetchOnRestart &&
-                (refetchOnRestart ?? client.defaultOptions.queries.refetchOnRestart)) ||
+                (refetchOnRestart ?? queryClient.defaultOptions.queries.refetchOnRestart)) ||
             (event.type == QueryCacheEventType.refetchOnReconnect &&
-                (refetchOnReconnect ?? client.defaultOptions.queries.refetchOnReconnect))) {
+                (refetchOnReconnect ?? queryClient.defaultOptions.queries.refetchOnReconnect))) {
           refetchPagesUpToCurrent();
         }
       } catch (e) {

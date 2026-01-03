@@ -4,10 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 
 void main() {
+  late QueryClient client;
+
   setUp(() {
     // Ensure a fresh QueryClient instance between tests
-    QueryClient();
-    QueryClient.instance.mutationCache.clear();
+    client = QueryClient();
+    client.mutationCache.clear();
   });
 
 // (setUp is declared above)
@@ -16,7 +18,7 @@ void main() {
     final holder = ValueNotifier<MutationResult<String, String>?>(null);
 
     await tester.pumpWidget(QueryClientProvider(
-        client: QueryClient.instance,
+        client: client,
         child: MaterialApp(
           home: HookBuilder(
             builder: (context) {
@@ -58,7 +60,7 @@ void main() {
     final holder = ValueNotifier<MutationResult<String, String>?>(null);
 
     await tester.pumpWidget(QueryClientProvider(
-        client: QueryClient.instance,
+        client: client,
         child: MaterialApp(
           home: HookBuilder(
             builder: (context) {

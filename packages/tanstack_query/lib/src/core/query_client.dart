@@ -1,8 +1,8 @@
 import 'package:tanstack_query/tanstack_query.dart';
 
 /// Core client that owns the cache and provides utilities to invalidate,
-/// set, and notify query data. Use `QueryClient.instance` for global access
-/// when required by hooks and widgets.
+/// set, and notify query data. Prefer obtaining the active client via
+/// `useQueryClient()` (with `QueryClientProvider`) in hooks and widgets; a
 class QueryClient {
   /// Global default options applied to queries and mutations.
   final DefaultOptions defaultOptions;
