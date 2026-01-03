@@ -7,31 +7,33 @@ void main() {
   setUp(() {
     // Ensure a fresh QueryClient instance between tests
     QueryClient();
+    QueryClient.instance.mutationCache.clear();
   });
 
 // (setUp is declared above)
-  testWidgets('should mutate and succeed when mutate is called',
-      (WidgetTester tester) async {
+  testWidgets('should mutate and succeed when mutate is called', (WidgetTester tester) async {
     String? successData;
     final holder = ValueNotifier<MutationResult<String, String>?>(null);
 
-    await tester.pumpWidget(MaterialApp(
-      home: HookBuilder(
-        builder: (context) {
-          final result = useMutation<String, String>(
-            mutationFn: (params) async {
-              // simulate async operation
-              await Future.delayed(Duration(milliseconds: 10));
-              return 'ok';
-            },
-            onSuccess: (data) => successData = data,
-          );
+    await tester.pumpWidget(QueryClientProvider(
+        client: QueryClient.instance,
+        child: MaterialApp(
+          home: HookBuilder(
+            builder: (context) {
+              final result = useMutation<String, String>(
+                mutationFn: (params) async {
+                  // simulate async operation
+                  await Future.delayed(Duration(milliseconds: 10));
+                  return 'ok';
+                },
+                onSuccess: (data) => successData = data,
+              );
 
-          holder.value = result;
-          return Container();
-        },
-      ),
-    ));
+              holder.value = result;
+              return Container();
+            },
+          ),
+        )));
     // initial state is idle
     expect(holder.value!.status, equals(MutationStatus.idle));
 
@@ -51,28 +53,29 @@ void main() {
     expect(successData, equals('ok'));
   });
 
-  testWidgets('should mutate and fail when mutate is called',
-      (WidgetTester tester) async {
+  testWidgets('should mutate and fail when mutate is called', (WidgetTester tester) async {
     Object? errorObj;
     final holder = ValueNotifier<MutationResult<String, String>?>(null);
 
-    await tester.pumpWidget(MaterialApp(
-      home: HookBuilder(
-        builder: (context) {
-          final result = useMutation<String, String>(
-            mutationFn: (params) async {
-              // simulate async error
-              await Future.delayed(Duration(milliseconds: 10));
-              throw Exception('boom');
-            },
-            onError: (e) => errorObj = e,
-          );
+    await tester.pumpWidget(QueryClientProvider(
+        client: QueryClient.instance,
+        child: MaterialApp(
+          home: HookBuilder(
+            builder: (context) {
+              final result = useMutation<String, String>(
+                mutationFn: (params) async {
+                  // simulate async error
+                  await Future.delayed(Duration(milliseconds: 10));
+                  throw Exception('boom');
+                },
+                onError: (e) => errorObj = e,
+              );
 
-          holder.value = result;
-          return Container();
-        },
-      ),
-    ));
+              holder.value = result;
+              return Container();
+            },
+          ),
+        )));
     // initial state is idle
     expect(holder.value!.status, equals(MutationStatus.idle));
 

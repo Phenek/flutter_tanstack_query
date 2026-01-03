@@ -25,8 +25,9 @@ QueryResult<T> useQuery<T>(
     bool? enabled,
     bool? refetchOnRestart,
     bool? refetchOnReconnect}) {
+  final client = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
-  var cacheEntry = cacheQuery[cacheKey];
+  var cacheEntry = client.queryCache[cacheKey];
   var isFirstRequest = useRef(true);
   final callerId =
       useMemoized(() => DateTime.now().microsecondsSinceEpoch.toString(), []);
@@ -37,23 +38,23 @@ QueryResult<T> useQuery<T>(
               isFetching: cacheEntry.result.isFetching)
           : QueryResult<T>(cacheKey, QueryStatus.pending, null, null,
               isFetching: false));
-  late QueryCacheListener queryCacheListener;
   var isMounted = true;
 
   void updateCache(QueryResult<T> queryResult) {
-    if (queryResult.data == null && cacheQuery.containsKey(cacheKey)) {
-      cacheQuery.remove(cacheKey);
+    // If the query returned null *and* it is a successful result, remove
+    // the existing cache entry. For error results we still persist the
+    // failing result so subscribers can reflect the error state.
+    if (queryResult.data == null && queryResult.isSuccess && client.queryCache.containsKey(cacheKey)) {
+      client.queryCache.remove(cacheKey);
       return;
     }
 
-    cacheQuery[cacheKey] = CacheQuery(queryResult, DateTime.now());
-    QueryClient.instance
-        .notifyUpdate(cacheKey, queryResult, excludeCallerId: callerId);
+    client.queryCache.set(cacheKey, QueryCacheEntry(queryResult, DateTime.now()), callerId: callerId);
   }
 
   void fetch() {
     isFirstRequest.value = false;
-    var cacheEntry = cacheQuery[cacheKey];
+    var cacheEntry = client.queryCache[cacheKey];
     var shouldUpdateTheCache = false;
 
     // If there's no cache entry, or there is no currently running fetch (or it finished/errored),
@@ -68,7 +69,7 @@ QueryResult<T> useQuery<T>(
 
       var futureFetch = TrackedFuture(queryFn());
 
-      cacheQuery[cacheKey] = cacheEntry = CacheQuery<T>(
+      client.queryCache[cacheKey] = cacheEntry = QueryCacheEntry<T>(
           queryResult, DateTime.now(),
           queryFnRunning: futureFetch);
 
@@ -85,26 +86,31 @@ QueryResult<T> useQuery<T>(
       if (isMounted) result.value = queryResult;
       if (shouldUpdateTheCache) updateCache(queryResult);
 
-      QueryClient.instance.queryCache?.config.onSuccess?.call(value);
+      client.queryCache.config.onSuccess?.call(value);
     }).catchError((e) {
       final queryResult = QueryResult<T>(cacheKey, QueryStatus.error, null, e,
           isFetching: false);
       if (isMounted) result.value = queryResult;
       if (shouldUpdateTheCache) updateCache(queryResult);
 
-      QueryClient.instance.queryCache?.config.onError?.call(e);
+      client.queryCache.config.onError?.call(e);
     });
   }
 
   useEffect(() {
-    if ((enabled ?? QueryClient.instance.defaultOptions.queries.enabled) ==
-        false) {
+    if ((enabled ?? client.defaultOptions.queries.enabled) == false) {
       return null;
     }
 
     bool shouldFetch = result.value.data == null ||
         result.value.isError ||
         result.value.key != cacheKey;
+
+    // If the current value is an error and this is not the first request,
+    // avoid immediately re-fetching (prevents a fast retry loop during error handling).
+    if (result.value.isError && isFirstRequest.value == false) {
+      shouldFetch = false;
+    }
 
     //Check StaleTime here
     if (isFirstRequest.value == true &&
@@ -121,33 +127,41 @@ QueryResult<T> useQuery<T>(
       fetch();
     }
 
-    // Listen to changes in QueryClient
-    listenCacheUpdate(dynamic newResult) {
-      try {
-        if (!isMounted) return;
 
-        // Accept dynamic payloads from core cache; convert to QueryResult as needed
-        if (newResult == null) {
+    final unsubscribe = client.queryCache.subscribe((event) {
+
+      // Only care about events for our cacheKey
+      if (event.cacheKey != cacheKey) return;
+      // Ignore events originating from this caller
+      if (event.callerId != null && event.callerId == callerId) return;
+
+      try {
+        if (event.type == QueryCacheEventType.removed) {
           result.value = QueryResult<T>(
               cacheKey, QueryStatus.pending, null, null,
               isFetching: false);
-        } else {
-          result.value = QueryResult<T>(
-              cacheKey, newResult.status, newResult.data as T?, newResult.error,
-              isFetching: newResult.isFetching);
+        } else if (event.type == QueryCacheEventType.added || event.type == QueryCacheEventType.updated) {
+          final newResult = event.entry?.result as QueryResult<T>?;
+          if (newResult != null) {
+            result.value = QueryResult<T>(
+                cacheKey, newResult.status, newResult.data, newResult.error,
+                isFetching: newResult.isFetching);
+          }
+        } else if (event.type == QueryCacheEventType.refetch ||
+            (event.type == QueryCacheEventType.refetchOnRestart &&
+                (refetchOnRestart ?? client.defaultOptions.queries.refetchOnRestart)) ||
+            (event.type == QueryCacheEventType.refetchOnReconnect &&
+                (refetchOnReconnect ?? client.defaultOptions.queries.refetchOnReconnect))) {
+          fetch();
         }
       } catch (e) {
         debugPrint(e.toString());
       }
-    }
-
-    queryCacheListener = QueryCacheListener(callerId, false, fetch,
-        listenCacheUpdate, refetchOnRestart, refetchOnReconnect);
-    QueryClient.instance.addListener(queryKey, queryCacheListener);
+    });
 
     return () {
       isMounted = false;
-      QueryClient.instance.removeListener(queryKey, queryCacheListener);
+      unsubscribe();
     };
   }, [enabled, ...queryKey]);
 

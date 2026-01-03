@@ -1,6 +1,8 @@
 import 'types.dart';
+import 'utils.dart';
+import 'subscribable.dart';
 
-/// Configuration callbacks for query cache events like `onError` and `onSuccess`.
+/// Configuration callbacks for query cache events like `onError`, `onSuccess` and `onSettled`.
 class QueryCacheConfig {
   /// Called when a query fetch results in an error.
   final void Function(dynamic error)? onError;
@@ -8,15 +10,36 @@ class QueryCacheConfig {
   /// Called when a query fetch completes successfully.
   final void Function(dynamic data)? onSuccess;
 
-  QueryCacheConfig({this.onError, this.onSuccess});
+  /// Called when a query settles (either success or error).
+  final void Function(dynamic data, dynamic error)? onSettled;
+
+  const QueryCacheConfig({this.onError, this.onSuccess, this.onSettled});
 }
 
-/// Simple holder for query cache configuration.
-class QueryCache {
-  /// Configuration containing callbacks for query lifecycle events.
-  final QueryCacheConfig config;
+/// The kinds of events emitted by the query cache.
+enum QueryCacheEventType {
+  added,
+  updated,
+  removed,
+  refetch,
+  refetchOnRestart,
+  refetchOnReconnect,
+}
 
-  QueryCache({required this.config});
+/// Listener signature for cache-level notifications.
+typedef QueryCacheListener = void Function(QueryCacheNotifyEvent event);
+
+/// A notification event emitted by `QueryCache`.
+class QueryCacheNotifyEvent {
+  final QueryCacheEventType type;
+  final String? cacheKey;
+  final QueryCacheEntry? entry;
+  final String? callerId;
+
+  QueryCacheNotifyEvent(this.type, this.cacheKey, this.entry, {this.callerId});
+
+  @override
+  String toString() => 'QueryCacheNotifyEvent(type: $type, cacheKey: $cacheKey, entry: $entry, callerId: $callerId)';
 }
 
 /// A cache entry storing the last query [result], a [timestamp] and optionally
@@ -27,50 +50,118 @@ class QueryCache {
 /// - `timestamp`: When the value was cached (used to compute staleness).
 /// - `queryFnRunning`: If non-null, a `TrackedFuture` representing an in-flight
 ///   fetch for this key.
-class CacheQuery<T> {
-  final dynamic
-      result; // can be QueryResult/InfiniteQueryResult from flutter layer
+class QueryCacheEntry<T> {
+  final dynamic result; // can be QueryResult/InfiniteQueryResult from flutter layer
   final DateTime timestamp;
-  late TrackedFuture<T>? queryFnRunning;
+  TrackedFuture<T>? queryFnRunning;
 
-  CacheQuery(this.result, this.timestamp, {this.queryFnRunning});
+  QueryCacheEntry(this.result, this.timestamp, {this.queryFnRunning});
+
+  @override
+  String toString() => 'QueryCacheEntry(result: $result, timestamp: $timestamp, running: $queryFnRunning)';
 }
 
-/// Listener registered for cache updates and refetch callbacks.
-///
-/// Fields:
-/// - [id]: Unique identifier used to avoid notifying the originating caller
-///   when a cache update is performed.
-/// - [isInfinite]: Whether the listener handles `InfiniteQueryResult` payloads.
-/// - [refetchCallBack]: Callback to request a full refetch (used by invalidation
-///   and refetch-on-reconnect/restart behavior).
-/// - [listenUpdateCallBack]: Callback invoked when new query results are
-///   available for the registered key.
-class QueryCacheListener {
-  /// Unique listener id used to avoid sending updates to the caller that
-  /// triggered the change.
-  final String id;
+/// Query cache that stores cache entries and provides utilities to
+/// find/subscribe/clear entries. It is intended to be owned by a `QueryClient` instance.
 
-  /// Whether this listener expects infinite query payloads.
-  bool isInfinite;
+class QueryCache extends Subscribable<QueryCacheListener> {
+  /// Configuration containing callbacks for query lifecycle events.
+  final QueryCacheConfig config;
 
-  /// Callback invoked to request a refetch.
-  final Function() refetchCallBack;
+  final Map<String, QueryCacheEntry<dynamic>> _cache = {};
 
-  /// Callback invoked to deliver updated query results to the listener.
-  final Function(dynamic) listenUpdateCallBack;
+  QueryCache({this.config = const QueryCacheConfig()});
 
-  /// Optional flag to override the default refetch-on-restart behavior.
-  bool? refetchOnRestart;
+  QueryCacheEntry? operator [](String key) => _cache[key];
+  void operator []=(String key, QueryCacheEntry value) => set(key, value);
+  bool containsKey(String key) => _cache.containsKey(key);
 
-  /// Optional flag to override the default refetch-on-reconnect behavior.
-  bool? refetchOnReconnect;
+  Iterable<String> get keys => _cache.keys;
 
-  QueryCacheListener(
-      this.id,
-      this.isInfinite,
-      this.refetchCallBack,
-      this.listenUpdateCallBack,
-      this.refetchOnRestart,
-      this.refetchOnReconnect);
+  /// Set or update a cache entry and notify listeners.
+  ///
+  /// Emits an `added` event when the key did not previously exist, otherwise
+  /// `updated` when replacing an existing entry.
+  void set(String key, QueryCacheEntry value, {String? callerId}) {
+    final existed = _cache.containsKey(key);
+    _cache[key] = value;
+    _notifyListeners(QueryCacheNotifyEvent(existed ? QueryCacheEventType.updated : QueryCacheEventType.added, key, value, callerId: callerId));
+  }
+
+  /// Remove a cache entry by key and notify listeners if something was removed.
+  QueryCacheEntry? remove(String key, {String? callerId}) {
+    final removed = _cache.remove(key);
+    if (removed != null) {
+      _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.removed, key, removed, callerId: callerId));
+    }
+    return removed;
+  }
+
+  /// Remove entries for which [test] returns true, and notify listeners for each removed entry.
+  void removeWhere(bool Function(String, QueryCacheEntry) test) {
+    final removedEntries = <String, QueryCacheEntry>{};
+    _cache.removeWhere((k, v) {
+      final shouldRemove = test(k, v);
+      if (shouldRemove) removedEntries[k] = v;
+      return shouldRemove;
+    });
+    for (var entry in removedEntries.entries) {
+      _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.removed, entry.key, entry.value));
+    }
+  }
+
+  /// Request a refetch for all cache entries matching [queryKey].
+  ///
+  /// This will emit a `refetch` event for each matching cache entry so
+  /// listeners can trigger their refetch callbacks. An optional `callerId`
+  /// may be provided so listeners can be excluded if needed.
+  void refetch(List<Object> queryKey, {String? callerId}) {
+    final cacheKey = queryKeyToCacheKey(queryKey);
+    for (var k in _cache.keys.where((k) => k.startsWith(cacheKey))) {
+      _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.refetch, k, _cache[k], callerId: callerId));
+    }
+  }
+
+  /// Request a refetch for a specific cache key.
+  void refetchByCacheKey(String cacheKey, {String? callerId}) {
+    _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.refetch, cacheKey, _cache[cacheKey], callerId: callerId));
+  }
+
+  /// Trigger refetch events for all cache entries; typically used on restart.
+  void refetchOnRestart() {
+    for (var k in _cache.keys) {
+      _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.refetchOnRestart, k, _cache[k]));
+    }
+  }
+
+  /// Trigger refetch events for all cache entries when the connection is re-established.
+  void refetchOnReconnect() {
+    for (var k in _cache.keys) {
+      _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.refetchOnReconnect, k, _cache[k]));
+    }
+  }
+
+  /// Find a single entry by exact query key.
+  QueryCacheEntry? find(List<Object> queryKey) => _cache[queryKeyToCacheKey(queryKey)];
+
+  /// Find all entries whose cache keys start with the serialized [queryKey].
+  List<QueryCacheEntry> findAll(List<Object> queryKey) {
+    final cacheKey = queryKeyToCacheKey(queryKey);
+    return _cache.entries.where((e) => e.key.startsWith(cacheKey)).map((e) => e.value).toList();
+  }
+
+  /// Clear all entries and notify listeners for each removal and a final `clear` event.
+  void clear({String? callerId}) {
+    final keys = _cache.keys.toList();
+    _cache.clear();
+    for (var k in keys) {
+      _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.removed, k, null, callerId: callerId));
+    }
+  }
+
+
+  void _notifyListeners(QueryCacheNotifyEvent event) {
+    // Delegate to Subscribable to iterate and safely call listeners.
+    notifyAll((l) => l(event));
+  }
 }

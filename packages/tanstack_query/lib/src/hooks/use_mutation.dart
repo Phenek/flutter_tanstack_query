@@ -39,13 +39,13 @@ MutationResult<T, P> useMutation<T, P>(
       state.value = MutationState<T>(data, MutationStatus.success, null);
       onSuccess?.call(data);
       onSettle?.call(data, null);
-      QueryClient.instance.mutationCache?.config.onSuccess?.call(data);
+      QueryClient.instance.mutationCache.config.onSuccess?.call(data);
     } catch (e) {
       if (!isMounted) return;
       state.value = MutationState<T>(null, MutationStatus.error, e);
       onError?.call(e);
       onSettle?.call(null, e);
-      QueryClient.instance.mutationCache?.config.onError?.call(e);
+      QueryClient.instance.mutationCache.config.onError?.call(e);
     }
   }
 

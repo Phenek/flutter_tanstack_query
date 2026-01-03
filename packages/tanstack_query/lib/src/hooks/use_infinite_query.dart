@@ -29,12 +29,13 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
   bool? refetchOnRestart,
   bool? refetchOnReconnect,
 }) {
+  final client = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
   final currentPage = useRef<int>(initialPageParam);
   var isFirstRequest = useRef(true);
   final callerId =
       useMemoized(() => DateTime.now().microsecondsSinceEpoch.toString(), []);
-  var cacheEntry = cacheQuery[cacheKey];
+  var cacheEntry = client.queryCache[cacheKey];
   final result = useState<InfiniteQueryResult<T>>(
       cacheEntry != null && cacheEntry.result.isSuccess
           ? InfiniteQueryResult(
@@ -51,22 +52,20 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
               isFetching: false,
               error: null,
               isFetchingNextPage: false));
-  late QueryCacheListener queryCacheListener;
 
   var isMounted = true;
   Timer? timer;
 
   void updateCache(InfiniteQueryResult<T> queryResult,
       {TrackedFuture<dynamic>? queryFnRunning}) {
-    if (queryResult.data == null && cacheQuery.containsKey(cacheKey)) {
-      cacheQuery.remove(cacheKey);
+    if (queryResult.data == null && client.queryCache.containsKey(cacheKey)) {
+      client.queryCache.remove(cacheKey);
       return;
     }
 
-    cacheQuery[cacheKey] =
-        CacheQuery(queryResult, DateTime.now(), queryFnRunning: queryFnRunning);
-    QueryClient.instance
-        .notifyUpdate(cacheKey, queryResult, excludeCallerId: callerId);
+    client.queryCache.set(cacheKey,
+        QueryCacheEntry(queryResult, DateTime.now(), queryFnRunning: queryFnRunning),
+        callerId: callerId);
   }
 
   // Safe setter to avoid updating the ValueNotifier after it has been disposed.
@@ -120,7 +119,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
       safeSetResult(queryResult);
       updateCache(queryResult);
 
-      QueryClient.instance.queryCache?.config.onSuccess?.call(pageData);
+      client.queryCache.config.onSuccess?.call(pageData);
     }).catchError((e) {
       final queryResult = InfiniteQueryResult<T>(
         key: cacheKey,
@@ -134,13 +133,13 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
       safeSetResult(queryResult);
       updateCache(queryResult);
 
-      QueryClient.instance.queryCache?.config.onError?.call(e);
+      client.queryCache.config.onError?.call(e);
     });
   }
 
   void fetch() {
     isFirstRequest.value = false;
-    var cacheEntry = cacheQuery[cacheKey];
+    var cacheEntry = client.queryCache[cacheKey];
     var shouldUpdateTheCache = false;
 
     if (cacheEntry == null ||
@@ -160,8 +159,8 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
       var futureFetch = TrackedFuture(queryFn(initialPageParam));
 
       //create CacheEntry
-      cacheQuery[cacheKey] = cacheEntry =
-          CacheQuery(queryResult, DateTime.now(), queryFnRunning: futureFetch);
+      client.queryCache[cacheKey] = cacheEntry =
+          QueryCacheEntry(queryResult, DateTime.now(), queryFnRunning: futureFetch);
     }
     // Loading State: cacheEntry has a Running Function, set result to propagate the loading state
     var futureFetch = cacheEntry.queryFnRunning!;
@@ -185,7 +184,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
       if (isMounted) result.value = queryResult;
       if (shouldUpdateTheCache) updateCache(queryResult);
 
-      QueryClient.instance.queryCache?.config.onSuccess?.call(pageData);
+      client.queryCache.config.onSuccess?.call(pageData);
     }).catchError((e) {
       final queryResult = InfiniteQueryResult<T>(
         key: cacheKey,
@@ -199,7 +198,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
       if (isMounted) result.value = queryResult;
       if (shouldUpdateTheCache) updateCache(queryResult);
 
-      QueryClient.instance.queryCache?.config.onError?.call(e);
+      client.queryCache.config.onError?.call(e);
     });
   }
 
@@ -241,8 +240,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
   }
 
   useEffect(() {
-    if ((enabled ?? QueryClient.instance.defaultOptions.queries.enabled) ==
-        false) { return null; }
+    if ((enabled ?? client.defaultOptions.queries.enabled) == false) { return null; }
 
     if (debounceTime == null || isFirstRequest.value) {
       resetValues(currentPage, initialPageParam, result);
@@ -259,43 +257,48 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
       });
     }
 
-    // Listen to changes in QueryClient
-    listenCacheUpdate(dynamic queryResult) {
-      if (queryResult is InfiniteQueryResult) {
-        try {
-          if (!isMounted) return;
-          //We need to cast it with T, cause Flutter take it as Object only..
-          var queryResultT = InfiniteQueryResult<T>(
-              key: cacheKey,
-              status: queryResult.status,
-              data: queryResult.data as List<T>,
-              isFetching: queryResult.isFetching,
-              error: queryResult.error,
-              isFetchingNextPage: queryResult.isFetchingNextPage);
-          // fetchNextPage should be set
-          queryResultT.fetchNextPage = () => fetchNextPage(queryResultT);
-          result.value = queryResultT;
-        } catch (e) {
-          debugPrint(e.toString());
-        }
-      } else {
-        // Handle the case where newResult is not an InfiniteQueryResult
-        debugPrint("newResult is not an InfiniteQueryResult");
-      }
-    }
 
-    queryCacheListener = QueryCacheListener(
-        callerId,
-        true,
-        refetchPagesUpToCurrent,
-        listenCacheUpdate,
-        refetchOnRestart,
-        refetchOnReconnect);
-    QueryClient.instance.addListener(queryKey, queryCacheListener);
+    final unsubscribe = client.queryCache.subscribe((event) {
+      if (event.cacheKey != cacheKey) return;
+      if (event.callerId != null && event.callerId == callerId) return;
+
+      try {
+        if (event.type == QueryCacheEventType.removed) {
+          result.value = InfiniteQueryResult(
+              key: cacheKey,
+              status: QueryStatus.pending,
+              data: [],
+              isFetching: false,
+              error: null,
+              isFetchingNextPage: false);
+        } else if (event.type == QueryCacheEventType.added || event.type == QueryCacheEventType.updated) {
+          final newResult = event.entry?.result as InfiniteQueryResult<T>?;
+          if (newResult != null) {
+            final q = InfiniteQueryResult<T>(
+                key: cacheKey,
+                status: newResult.status,
+                data: newResult.data as List<T>,
+                isFetching: newResult.isFetching,
+                error: newResult.error,
+                isFetchingNextPage: newResult.isFetchingNextPage);
+            q.fetchNextPage = () => fetchNextPage(q);
+            result.value = q;
+          }
+        } else if (event.type == QueryCacheEventType.refetch ||
+            (event.type == QueryCacheEventType.refetchOnRestart &&
+                (refetchOnRestart ?? client.defaultOptions.queries.refetchOnRestart)) ||
+            (event.type == QueryCacheEventType.refetchOnReconnect &&
+                (refetchOnReconnect ?? client.defaultOptions.queries.refetchOnReconnect))) {
+          refetchPagesUpToCurrent();
+        }
+      } catch (e) {
+        debugPrint(e.toString());
+      }
+    });
 
     return () {
       isMounted = false;
-      QueryClient.instance.removeListener(queryKey, queryCacheListener);
+      unsubscribe();
       if (timer != null) {
         timer!.cancel();
       }

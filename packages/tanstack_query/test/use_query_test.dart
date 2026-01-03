@@ -7,13 +7,13 @@ void main() {
   setUp(() {
     // Ensure a fresh QueryClient instance and clear cache between tests
     QueryClient();
-    cacheQuery.clear();
+    QueryClient.instance.queryCache.clear();
   });
 
   testWidgets('should fetch and succeed', (WidgetTester tester) async {
     final holder = ValueNotifier<QueryResult<String>?>(null);
 
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(QueryClientProvider(client: QueryClient.instance, child: MaterialApp(
       home: HookBuilder(builder: (context) {
         final query = useQuery<String>(
           queryKey: ['fetch-success'],
@@ -29,7 +29,7 @@ void main() {
         // return an empty container, we assert on the hook state directly
         return Container();
       }),
-    ));
+    )));
 
     // initial state read from the hook directly
     expect(holder.value!.status, equals(QueryStatus.pending));
@@ -44,13 +44,13 @@ void main() {
 
     // The cache should also contain the successful result
     final key = queryKeyToCacheKey(['fetch-success']);
-    expect((cacheQuery[key]!.result as QueryResult<String>).data, equals('ok'));
+    expect((QueryClient.instance.queryCache[key]!.result as QueryResult<String>).data, equals('ok'));
   });
 
   testWidgets('should fetch and fail', (WidgetTester tester) async {
     final holder = ValueNotifier<QueryResult<String>?>(null);
 
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(QueryClientProvider(client: QueryClient.instance, child: MaterialApp(
       home: HookBuilder(builder: (context) {
         final result = useQuery<String>(
           queryKey: ['fetch-fail'],
@@ -64,7 +64,7 @@ void main() {
 
         return Container();
       }),
-    ));
+    )));
     // run the build and let the hook run the failing query
     await tester.pump();
 
@@ -83,8 +83,8 @@ void main() {
 
     // cache should contain the failing result as well (if the hook updated the cache)
     final cacheKey = queryKeyToCacheKey(['fetch-fail']);
-    if (cacheQuery.containsKey(cacheKey)) {
-      final cached = cacheQuery[cacheKey]!.result as QueryResult<String>;
+    if (QueryClient.instance.queryCache.containsKey(cacheKey)) {
+      final cached = QueryClient.instance.queryCache[cacheKey]!.result as QueryResult<String>;
       expect(cached.status, equals(QueryStatus.error));
       expect(cached.error.toString(), contains('boom'));
     }
@@ -94,7 +94,7 @@ void main() {
       (WidgetTester tester) async {
     var called = false;
 
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(QueryClientProvider(client: QueryClient.instance, child: MaterialApp(
       home: HookBuilder(builder: (context) {
         useQuery<String>(
           queryKey: ['disabled'],
@@ -107,7 +107,7 @@ void main() {
 
         return Container();
       }),
-    ));
+    )));
 
     // give a bit of time
     await tester.pump();
@@ -120,7 +120,7 @@ void main() {
     final holder = ValueNotifier<QueryResult<String>?>(null);
     var called = 0;
 
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(QueryClientProvider(client: QueryClient.instance, child: MaterialApp(
       home: HookBuilder(builder: (context) {
         final result = useQuery<String>(
           queryKey: ['toggle-enable-key'],
@@ -136,14 +136,14 @@ void main() {
 
         return Container();
       }),
-    ));
+    )));
 
     // initial build: enabled=false so should NOT call
     await tester.pump();
     expect(called, equals(0));
 
     // enable the query by rebuilding with enabled = true
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(QueryClientProvider(client: QueryClient.instance, child: MaterialApp(
       home: HookBuilder(builder: (context) {
         final result = useQuery<String>(
           queryKey: ['toggle-enable-key'],
@@ -158,7 +158,7 @@ void main() {
         holder.value = result;
         return Container();
       }),
-    ));
+    )));
 
     // allow async to run
     await tester.pumpAndSettle();
@@ -173,13 +173,13 @@ void main() {
     final holder = ValueNotifier<QueryResult<String>?>(null);
 
     // populate cache with old timestamp
-    cacheQuery[key] = CacheQuery(
+    QueryClient.instance.queryCache[key] = QueryCacheEntry(
         QueryResult<String>(key, QueryStatus.success, 'old', null),
         DateTime.now().subtract(Duration(milliseconds: 200)));
 
     // removed external callback; assert on the rendered UI
 
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(QueryClientProvider(client: QueryClient.instance, child: MaterialApp(
       home: HookBuilder(builder: (context) {
         final result = useQuery<String>(
           queryKey: ['stale-key'],
@@ -194,7 +194,7 @@ void main() {
 
         return Container();
       }),
-    ));
+    )));
 
     // initial state should detect stale and fetch
     await tester.pump();
@@ -203,7 +203,7 @@ void main() {
     expect(holder.value!.data, equals('fresh'));
     // cache should be updated with fresh value
     final cacheKey = queryKeyToCacheKey(['stale-key']);
-    expect((cacheQuery[cacheKey]!.result as QueryResult<String>).data,
+    expect((QueryClient.instance.queryCache[cacheKey]!.result as QueryResult<String>).data,
         equals('fresh'));
   });
 
@@ -212,7 +212,7 @@ void main() {
     final key = queryKeyToCacheKey(['fresh-key']);
 
     // populate cache with recent timestamp
-    cacheQuery[key] = CacheQuery(
+    QueryClient.instance.queryCache[key] = QueryCacheEntry(
         QueryResult<String>(key, QueryStatus.success, 'cached', null),
         DateTime.now());
 
@@ -220,7 +220,7 @@ void main() {
 
     final holder = ValueNotifier<QueryResult<String>?>(null);
 
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(QueryClientProvider(client: QueryClient.instance, child: MaterialApp(
       home: HookBuilder(builder: (context) {
         final result = useQuery<String>(
           queryKey: ['fresh-key'],
@@ -235,7 +235,7 @@ void main() {
 
         return Container();
       }),
-    ));
+    )));
 
     // initial state should use cached result and NOT call queryFn
     await tester.pump();
