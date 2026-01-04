@@ -47,12 +47,10 @@ class Query<T> extends Removable {
     }
   }
 
-
-
   /// Fetch using Retryer with retry configuration from options.
   Future<T?> fetch() async {
-    // If there's already a pending retryer return its promise
-    if (_retryer != null && _retryer!.status() != 'rejected') {
+    // If there's already an in-flight retryer return its promise
+    if (_retryer != null && _retryer!.status() == 'pending') {
       return _retryer!.start();
     }
 
@@ -91,6 +89,8 @@ class Query<T> extends Removable {
       client.queryCache[cacheKey] = QueryCacheEntry<T>(queryResult, DateTime.now());
       client.queryCache.config.onSuccess?.call(value);
       _notifyObservers();
+      // Clear the retryer reference since the fetch has settled
+      _retryer = null;
       return value;
     } catch (e) {
       final failureCount = _retryer?.failureCount ?? 0;
@@ -99,6 +99,8 @@ class Query<T> extends Removable {
       client.queryCache[cacheKey] = QueryCacheEntry<T>(errorRes, DateTime.now());
       client.queryCache.config.onError?.call(e);
       _notifyObservers();
+      // Clear the retryer reference since the fetch has settled
+      _retryer = null;
       rethrow;
     }
   }

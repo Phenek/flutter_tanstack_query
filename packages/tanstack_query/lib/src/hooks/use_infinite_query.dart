@@ -18,6 +18,12 @@ import '../core/infinite_query_observer.dart';
 ///   given the last page's result.
 /// - [debounceTime]: If set, delays the initial fetch by the provided
 ///   duration to debounce rapid key changes.
+/// - [retry]: Controls retry behavior; same accepted forms as in `useMutation`:
+///   `false`, `true`, an `int`, or a function `(failureCount, error) => bool`.
+/// - [retryOnMount]: If `false`, a query that currently has an error will not
+///   attempt to retry when mounted.
+/// - [retryDelay]: Milliseconds between retries, or a function
+///   `(attempt, error) => int` returning the delay in ms.
 /// - [enabled], [refetchOnRestart], [refetchOnReconnect]: same semantics as
 ///   [useQuery].
 
@@ -33,9 +39,13 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
   required int initialPageParam,
   int Function(T lastResult)? getNextPageParam,
   Duration? debounceTime,
+  double? staleTime,
   bool? refetchOnRestart,
   bool? refetchOnReconnect,
   int? gcTime,
+  dynamic retry,
+  bool? retryOnMount,
+  dynamic retryDelay,
 }) {
   final queryClient = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
@@ -47,10 +57,14 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
             initialPageParam: initialPageParam,
             getNextPageParam: getNextPageParam,
             debounceTime: debounceTime,
+            staleTime: staleTime,
             enabled: enabled,
             refetchOnRestart: refetchOnRestart,
             refetchOnReconnect: refetchOnReconnect,
             gcTime: gcTime,
+            retry: retry,
+            retryOnMount: retryOnMount,
+            retryDelay: retryDelay,
           ),
       [
         queryClient,
@@ -58,10 +72,14 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
         initialPageParam,
         getNextPageParam,
         debounceTime,
+        staleTime,
         enabled,
         refetchOnRestart,
         refetchOnReconnect,
         gcTime,
+        retry,
+        retryOnMount,
+        retryDelay,
         cacheKey
       ]);
 
