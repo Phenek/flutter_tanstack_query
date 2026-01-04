@@ -1,34 +1,35 @@
 import 'package:tanstack_query/tanstack_query.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 
-/// Subscribes to a query identified by [queryKey] and manages its lifecycle.
+/// Subscribe to a query identified by [queryKey] and manage its lifecycle.
 ///
 /// [queryFn] is called to fetch data. Returns a [QueryResult<T>] that contains
-/// `data`, `error`, and `status` flags that can be used by widgets.
+/// `data`, `error`, and `status` flags to drive UI states.
 ///
 /// Parameters:
-/// - [queryFn]: Function that returns a `Future<T>` with the data.
-/// - [queryKey]: A list of objects uniquely identifying the query.
-/// - [staleTime]: Duration in milliseconds after which cached data is considered
-///   stale and will be refetched when `useQuery` runs (default behavior uses
-///   `DefaultOptions`).
-/// - [enabled]: If `false`, disables automatic fetching until set to `true`.
+/// - [queryFn] (required): Function returning a `Future<T>` used to fetch data.
+/// - [queryKey] (required): A `List<Object>` uniquely identifying the query.
+/// - [staleTime]: Time in **milliseconds** after which cached data is considered
+///   stale and will be refetched on next access. If null, the client's default
+///   `staleTime` is used.
+/// - [enabled]: When `false`, automatic fetching is disabled until `true`.
+///   Defaults to `queryClient.defaultOptions.queries.enabled`.
 /// - [refetchOnRestart]: When `true`, refetches on app restart.
 /// - [refetchOnReconnect]: When `true`, refetches on reconnect.
-/// - [gcTime]: The garbage-collection time in milliseconds for this query's cache entry.
-///   When all observers are removed, the query will be removed from the cache after
-///   `gcTime` milliseconds. A value <= 0 disables GC. If unspecified, the client
-///   default is used (see `QueryDefaultOptions.gcTime`).
-/// - [retry]: Controls retry behavior. May be:
-///   - `false` (no retry),
-///   - `true` (retry indefinitely),
-///   - an `int` (max failure attempts), or
-///   - a function `(failureCount, error) => bool` that returns whether to retry.
-/// - [retryOnMount]: If `false`, a query that contains an error will not retry when mounted.
-/// - [retryDelay]: Delay in milliseconds between retries, or a function
+/// - [gcTime]: Garbage-collection time in milliseconds for this query's cache
+///   entry. When all observers are removed, the query will be removed from the
+///   cache after `gcTime` ms. A value <= 0 disables GC. If unspecified, the
+///   client default is used.
+/// - [retry]: Controls retry behavior; same accepted forms as in `useMutation`:
+///   `false`, `true`, an `int`, or a function `(failureCount, error) => bool`.
+/// - [retryOnMount]: If `false`, a query that currently has an error will not
+///   attempt to retry when mounted.
+/// - [retryDelay]: Milliseconds between retries, or a function
 ///   `(attempt, error) => int` returning the delay in ms.
 ///
-/// Returns a [QueryResult<T>] representing the current query state and data.
+/// Returns:
+/// The current [QueryResult<T>] for the query (fields include `data`, `error`,
+/// and `status`).
 QueryResult<T> useQuery<T>(
     {required Future<T> Function() queryFn,
     required List<Object> queryKey,

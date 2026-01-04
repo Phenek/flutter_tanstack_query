@@ -24,6 +24,11 @@ class TodoCard extends HookWidget {
     final queryClient = useQueryClient();
     final check = useState<bool>(todo.completed);
 
+    useEffect(() {
+        check.value = todo.completed;
+      return null;
+    }, [todo]);
+
     // mutation hooks for editing and deleting todos
     final editMutation = useMutation<Todo, Todo>(
       mutationFn: (Todo body) => UpdateTodoApi.request(body),
