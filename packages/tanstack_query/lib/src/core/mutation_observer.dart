@@ -6,6 +6,8 @@ class MutationObserverResult<T, P> {
   final T? data;
   final MutationStatus status;
   final Object? error;
+  final int failureCount;
+  final Object? failureReason;
   final bool isPending;
   final bool isSuccess;
   final bool isError;
@@ -22,6 +24,8 @@ class MutationObserverResult<T, P> {
     required this.data,
     required this.status,
     required this.error,
+    required this.failureCount,
+    required this.failureReason,
     required this.isPending,
     required this.isSuccess,
     required this.isError,
@@ -130,6 +134,8 @@ class MutationObserver<T, P> extends Subscribable<Function> {
       data: state.data,
       status: state.status,
       error: state.error,
+      failureCount: state.failureCount,
+      failureReason: state.failureReason,
       isPending: state.isPending,
       isSuccess: state.isSuccess,
       isError: state.isError,

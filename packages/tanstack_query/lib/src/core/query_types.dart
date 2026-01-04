@@ -13,9 +13,15 @@ class QueryOptions<T> {
   /// Whether the query is enabled.
   final bool? enabled;
 
-  /// Retry options
-  final int? retry;
-  final int? retryDelay;
+  /// Retry options: can be `bool` (true = infinite, false = none), `int` (max attempts),
+  /// or a function `(failureCount, error) => bool` that returns whether to retry.
+  final dynamic retry;
+
+  /// Retry delay in milliseconds or a function `(attempt, error) => int`.
+  final dynamic retryDelay;
+
+  /// Whether the query should be retried on mount when it contains an error.
+  final bool? retryOnMount;
 
   /// Whether the query should refetch on app restart.
   final bool? refetchOnRestart;
@@ -33,6 +39,7 @@ class QueryOptions<T> {
     this.enabled,
     this.retry,
     this.retryDelay,
+    this.retryOnMount,
     this.refetchOnRestart,
     this.refetchOnReconnect,
     this.gcTime,
@@ -43,8 +50,9 @@ class QueryOptions<T> {
     List<Object>? queryKey,
     double? staleTime,
     bool? enabled,
-    int? retry,
-    int? retryDelay,
+    dynamic retry,
+    dynamic retryDelay,
+    bool? retryOnMount,
     bool? refetchOnRestart,
     bool? refetchOnReconnect,
     int? gcTime,
@@ -56,6 +64,7 @@ class QueryOptions<T> {
       enabled: enabled ?? this.enabled,
       retry: retry ?? this.retry,
       retryDelay: retryDelay ?? this.retryDelay,
+      retryOnMount: retryOnMount ?? this.retryOnMount,
       refetchOnRestart: refetchOnRestart ?? this.refetchOnRestart,
       refetchOnReconnect: refetchOnReconnect ?? this.refetchOnReconnect,
       gcTime: gcTime ?? this.gcTime,
@@ -74,6 +83,13 @@ class QueryResult<T> {
   bool isFetching;
   Object? error;
 
+  /// The number of times the query has failed in its current fetch cycle.
+  /// Incremented each time a retry attempt fails and reset to 0 on success.
+  int failureCount;
+
+  /// The last failure reason (if any). Reset to `null` on success.
+  Object? failureReason;
+
   /// Whether the cached value is considered stale.
   bool isStale;
 
@@ -82,7 +98,11 @@ class QueryResult<T> {
   Future<QueryResult<T>> Function({bool? throwOnError})? refetch;
 
   QueryResult(this.key, this.status, this.data, this.error,
-      {this.isFetching = false, this.isStale = false, this.refetch});
+      {this.isFetching = false,
+      this.isStale = false,
+      this.refetch,
+      this.failureCount = 0,
+      this.failureReason});
 
   bool get isError => status == QueryStatus.error;
   bool get isSuccess => status == QueryStatus.success;

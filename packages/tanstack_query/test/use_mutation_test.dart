@@ -141,4 +141,68 @@ void main() {
 
     expect(client.mutationCache.getAll().isEmpty, isTrue);
   });
+
+  testWidgets('should retry failed mutation according to retry settings', (WidgetTester tester) async {
+    final holder = ValueNotifier<MutationResult<String, int>?>(null);
+    var attempts = 0;
+
+    await tester.pumpWidget(QueryClientProvider(client: client, child: MaterialApp(
+      home: HookBuilder(builder: (context) {
+        final mutation = useMutation<String, int>(
+          mutationFn: (i) async {
+            attempts++;
+            await Future.delayed(Duration(milliseconds: 5));
+            if (attempts < 3) throw Exception('try-$attempts');
+            return 'finally';
+          },
+          retry: 3,
+          retryDelay: 5,
+        );
+
+        holder.value = mutation;
+
+        return Container();
+      }),
+    )));
+
+    await tester.runAsync(() async {
+      await holder.value!.mutateAsync(1);
+    });
+
+    expect(attempts, greaterThanOrEqualTo(3));
+    expect(holder.value!.status, equals(MutationStatus.success));
+    expect(holder.value!.data, equals('finally'));
+  });
+
+  testWidgets('should expose failureCount and failureReason on final error', (WidgetTester tester) async {
+    final holder = ValueNotifier<MutationResult<String, int>?>(null);
+
+    await tester.pumpWidget(QueryClientProvider(client: client, child: MaterialApp(
+      home: HookBuilder(builder: (context) {
+        final mutation = useMutation<String, int>(
+          mutationFn: (i) async {
+            await Future.delayed(Duration(milliseconds: 5));
+            throw Exception('boom');
+          },
+          retry: 2,
+          retryDelay: 5,
+        );
+
+        holder.value = mutation;
+
+        return Container();
+      }),
+    )));
+
+    await tester.runAsync(() async {
+      try {
+        await holder.value!.mutateAsync(1);
+      } catch (_) {}
+    });
+
+    expect(holder.value!.status, equals(MutationStatus.error));
+    expect(holder.value!.failureCount, greaterThanOrEqualTo(1));
+    expect(holder.value!.failureReason, isNotNull);
+  });
 }
+

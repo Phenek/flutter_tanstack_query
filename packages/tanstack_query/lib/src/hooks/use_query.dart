@@ -19,6 +19,14 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 ///   When all observers are removed, the query will be removed from the cache after
 ///   `gcTime` milliseconds. A value <= 0 disables GC. If unspecified, the client
 ///   default is used (see `QueryDefaultOptions.gcTime`).
+/// - [retry]: Controls retry behavior. May be:
+///   - `false` (no retry),
+///   - `true` (retry indefinitely),
+///   - an `int` (max failure attempts), or
+///   - a function `(failureCount, error) => bool` that returns whether to retry.
+/// - [retryOnMount]: If `false`, a query that contains an error will not retry when mounted.
+/// - [retryDelay]: Delay in milliseconds between retries, or a function
+///   `(attempt, error) => int` returning the delay in ms.
 ///
 /// Returns a [QueryResult<T>] representing the current query state and data.
 QueryResult<T> useQuery<T>(
@@ -28,7 +36,10 @@ QueryResult<T> useQuery<T>(
     bool? enabled,
     bool? refetchOnRestart,
     bool? refetchOnReconnect,
-    int? gcTime}) {
+    int? gcTime,
+    dynamic retry,
+    bool? retryOnMount,
+    dynamic retryDelay}) {
   final queryClient = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
 
@@ -42,8 +53,11 @@ QueryResult<T> useQuery<T>(
             refetchOnRestart: refetchOnRestart,
             refetchOnReconnect: refetchOnReconnect,
             gcTime: gcTime,
+            retry: retry,
+            retryOnMount: retryOnMount,
+            retryDelay: retryDelay,
           ),
-      [queryClient, queryFn, staleTime, enabled, refetchOnRestart, refetchOnReconnect, gcTime, cacheKey]);
+      [queryClient, queryFn, staleTime, enabled, refetchOnRestart, refetchOnReconnect, gcTime, retry, retryOnMount, retryDelay, cacheKey]);
 
   // Observer follows the same pattern as useInfiniteQuery: create once and
   // keep it in sync via setOptions to avoid complex lifecycle code in the hook.

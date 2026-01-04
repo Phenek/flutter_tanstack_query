@@ -35,6 +35,13 @@ class MutationOptions<T, P> {
   final void Function(Object?)? onError;
   final void Function(T?, Object?)? onSettled;
 
+  /// Retry configuration: can be `bool` (true = infinite), `int` (max attempts),
+  /// or a function `(failureCount, error) => bool`.
+  final dynamic retry;
+
+  /// Delay between retries in ms or a function `(attempt, error) => int`.
+  final dynamic retryDelay;
+
   /// Garbage collection time (milliseconds) after which unused mutations are removed.
   final int? gcTime;
 
@@ -45,6 +52,8 @@ class MutationOptions<T, P> {
     this.onSuccess,
     this.onError,
     this.onSettled,
+    this.retry,
+    this.retryDelay,
     this.gcTime,
   });
 }
@@ -81,7 +90,7 @@ class Mutation<T, P> extends Removable {
     for (var o in List.from(_observers)) {
       try {
         o.onMutationUpdate(action);
-      } catch (_) {
+      } catch (e) {
         // ignore listener errors
       }
     }
@@ -112,13 +121,31 @@ class Mutation<T, P> extends Removable {
       options.onMutate?.call();
     } catch (_) {}
 
-    state = MutationState<T>(null, MutationStatus.pending, null);
+    // Reset failure tracking when starting
+    state = MutationState<T>(null, MutationStatus.pending, null, failureCount: 0, failureReason: null);
     _notifyObservers(MutationAction.pending());
 
-    try {
-      final data = await options.mutationFn(variables);
+    // Build retryer
+    final retryValue = options.retry ?? client.defaultOptions.mutations.retry;
+    final retryDelayValue = options.retryDelay ?? client.defaultOptions.mutations.retryDelay;
 
-      state = MutationState<T>(data, MutationStatus.success, null);
+    // debug logs removed
+
+    final retryer = Retryer<T>(
+      fn: () async => options.mutationFn(variables),
+      retry: retryValue,
+      retryDelay: retryDelayValue,
+      onFail: (failureCount, error) {
+        // Update state while retrying so observers can read failureCount / reason
+        state = MutationState<T>(null, MutationStatus.pending, null, failureCount: failureCount, failureReason: error);
+        _notifyObservers(MutationAction.pending());
+      },
+    );
+
+    try {
+      final data = await retryer.start();
+
+      state = MutationState<T>(data, MutationStatus.success, null, failureCount: 0, failureReason: null);
       _notifyObservers(MutationAction.success(data));
 
       // Per-mutation hooks
@@ -133,7 +160,9 @@ class Mutation<T, P> extends Removable {
 
       return data;
     } catch (e) {
-      state = MutationState<T>(null, MutationStatus.error, e);
+      // final failure
+      final failureCount = retryer.failureCount;
+      state = MutationState<T>(null, MutationStatus.error, e, failureCount: failureCount, failureReason: e);
       _notifyObservers(MutationAction.error(e));
 
       try {

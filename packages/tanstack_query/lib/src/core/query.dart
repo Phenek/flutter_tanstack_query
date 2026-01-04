@@ -61,24 +61,41 @@ class Query<T> extends Removable {
       return await options.queryFn();
     }
 
-    _retryer = Retryer<T>(fn: fn, retry: options.retry ?? client.defaultOptions.queries.retry, retryDelay: options.retryDelay ?? client.defaultOptions.queries.retryDelay);
+    TrackedFuture<T>? running;
+
+    _retryer = Retryer<T>(
+      fn: fn,
+      retry: options.retry ?? client.defaultOptions.queries.retry,
+      retryDelay: options.retryDelay ?? client.defaultOptions.queries.retryDelay,
+      onFail: (failureCount, error) {
+        // Update cache to reflect the failure count/reason while still retrying
+        final failRes = QueryResult<T>(cacheKey, QueryStatus.pending, null, error,
+            isFetching: true, failureCount: failureCount, failureReason: error);
+        client.queryCache[cacheKey] = QueryCacheEntry<T>(failRes, DateTime.now(), queryFnRunning: running);
+        _notifyObservers();
+      },
+    );
 
     // Mark as pending in cache and notify observers immediately
-    final pending = QueryResult<T>(cacheKey, QueryStatus.pending, null, null, isFetching: true);
+    final pending = QueryResult<T>(cacheKey, QueryStatus.pending, null, null,
+        isFetching: true, failureCount: 0, failureReason: null);
     // Wrap retryer.start() in a TrackedFuture so other code can inspect queryFnRunning
-    final running = TrackedFuture<T>(_retryer!.start());
+    running = TrackedFuture<T>(_retryer!.start());
     client.queryCache[cacheKey] = QueryCacheEntry<T>(pending, DateTime.now(), queryFnRunning: running);
     _notifyObservers();
 
     try {
       final value = await running;
-      final queryResult = QueryResult<T>(cacheKey, QueryStatus.success, value, null, isFetching: false);
+      final queryResult = QueryResult<T>(cacheKey, QueryStatus.success, value, null,
+          isFetching: false, failureCount: 0, failureReason: null);
       client.queryCache[cacheKey] = QueryCacheEntry<T>(queryResult, DateTime.now());
       client.queryCache.config.onSuccess?.call(value);
       _notifyObservers();
       return value;
     } catch (e) {
-      final errorRes = QueryResult<T>(cacheKey, QueryStatus.error, null, e, isFetching: false);
+      final failureCount = _retryer?.failureCount ?? 0;
+      final errorRes = QueryResult<T>(cacheKey, QueryStatus.error, null, e,
+          isFetching: false, failureCount: failureCount, failureReason: e);
       client.queryCache[cacheKey] = QueryCacheEntry<T>(errorRes, DateTime.now());
       client.queryCache.config.onError?.call(e);
       _notifyObservers();

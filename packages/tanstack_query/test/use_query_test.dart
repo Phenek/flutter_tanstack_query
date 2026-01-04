@@ -63,6 +63,8 @@ void main() {
             await Future.delayed(Duration(milliseconds: 10));
             throw Exception('boom');
           },
+          retry: 1,
+          retryDelay: 10,
         );
 
         holder.value = result;
@@ -77,7 +79,7 @@ void main() {
     var tries = 0;
     while (
         (holder.value == null || holder.value!.status == QueryStatus.pending) &&
-            tries < 20) {
+            tries < 50) {
       await tester.pump(Duration(milliseconds: 10));
       tries++;
     }
@@ -86,13 +88,85 @@ void main() {
     expect(holder.value!.status, equals(QueryStatus.error));
     expect(holder.value!.error.toString(), contains('boom'));
 
+    // Ensure failureCount and failureReason are exposed
+    expect(holder.value!.failureCount, greaterThanOrEqualTo(1));
+    expect(holder.value!.failureReason, isNotNull);
+
     // cache should contain the failing result as well (if the hook updated the cache)
     final cacheKey = queryKeyToCacheKey(['fetch-fail']);
     if (queryClient.queryCache.containsKey(cacheKey)) {
       final cached = queryClient.queryCache[cacheKey]!.result as QueryResult<String>;
       expect(cached.status, equals(QueryStatus.error));
       expect(cached.error.toString(), contains('boom'));
+      expect(cached.failureCount, greaterThanOrEqualTo(1));
+      expect(cached.failureReason, isNotNull);
     }
+  });
+
+  testWidgets('should retry up to retry count and succeed', (WidgetTester tester) async {
+    final holder = ValueNotifier<QueryResult<String>?>(null);
+    var attempts = 0;
+
+    await tester.pumpWidget(QueryClientProvider(client: queryClient, child: MaterialApp(
+      home: HookBuilder(builder: (context) {
+        final result = useQuery<String>(
+          queryKey: ['retry-success'],
+          queryFn: () async {
+            attempts++;
+            await Future.delayed(Duration(milliseconds: 5));
+            if (attempts < 3) throw Exception('try-$attempts');
+            return 'finally';
+          },
+          retry: 3,
+          retryDelay: 5,
+        );
+
+        holder.value = result;
+
+        return Container();
+      }),
+    )));
+
+    // let retries happen
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(attempts, greaterThanOrEqualTo(3));
+    expect(holder.value!.status, equals(QueryStatus.success));
+    expect(holder.value!.data, equals('finally'));
+  });
+
+  testWidgets('should not retry on mount if retryOnMount is false', (WidgetTester tester) async {
+    final holder = ValueNotifier<QueryResult<String>?>(null);
+    var called = false;
+    final keyList = ['no-retry-on-mount'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+
+    // place an errored entry in cache
+    queryClient.queryCache[cacheKey] = QueryCacheEntry(QueryResult<String>(cacheKey, QueryStatus.error, null, Exception('old-error'), failureCount: 1, failureReason: Exception('old-error')), DateTime.now());
+
+    await tester.pumpWidget(QueryClientProvider(client: queryClient, child: MaterialApp(
+      home: HookBuilder(builder: (context) {
+        final result = useQuery<String>(
+          queryKey: keyList,
+          queryFn: () async {
+            called = true;
+            return 'should-not-run';
+          },
+          retryOnMount: false,
+          staleTime: 10000, // ensure cached error is not considered stale
+        );
+
+        holder.value = result;
+
+        return Container();
+      }),
+    )));
+
+    // give a bit of time
+    await tester.pump();
+
+    expect(called, isFalse);
   });
 
   testWidgets('should not fetch when enabled is false',

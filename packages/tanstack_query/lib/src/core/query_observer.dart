@@ -63,15 +63,18 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
   void onSubscribe() {
     // Called when the first listener subscribes. Start a refetch when
     // the current cache entry is missing, stale, or in error state —
-    // mirroring the previous `useQuery` behavior.
+    // mirroring the previous `useQuery` behavior. Respect `retryOnMount`.
     final cacheKey = queryKeyToCacheKey(options.queryKey);
     final entry = _client.queryCache[cacheKey];
 
     final enabled = options.enabled ?? true;
 
+    final isErrored = entry != null && entry.result is QueryResult && (entry.result as QueryResult).isError;
+    final retryOnMount = options.retryOnMount ?? _client.defaultOptions.queries.retryOnMount;
+
     final shouldFetch = enabled &&
         (entry == null ||
-            (entry.result is QueryResult && (entry.result as QueryResult).isError) ||
+            (isErrored && retryOnMount) ||
             (DateTime.now().difference(entry.timestamp).inMilliseconds > (options.staleTime ?? 0)));
 
     if (shouldFetch) {
@@ -96,40 +99,17 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
     _updateQuery();
     final cacheKey = queryKeyToCacheKey(options.queryKey);
 
-    var entry = _client.queryCache[cacheKey];
+    if (_query == null) return _currentResult;
 
-    if (entry == null ||
-        entry.queryFnRunning == null ||
-        entry.queryFnRunning!.isCompleted ||
-        entry.queryFnRunning!.hasError) {
-      final queryResult = QueryResult<TData>(cacheKey, QueryStatus.pending, null, null, isFetching: true);
-      final futureFetch = TrackedFuture<TData>(options.queryFn() as Future<TData>);
-      _client.queryCache[cacheKey] = QueryCacheEntry<TData>(queryResult, DateTime.now(), queryFnRunning: futureFetch);
-      entry = _client.queryCache[cacheKey];
-      // Ensure observer sees the updated entry
+    try {
+      await _query!.fetch();
       _currentEntry = _client.queryCache[cacheKey];
+    } catch (e) {
+      _currentEntry = _client.queryCache[cacheKey];
+      if (throwOnError == true) rethrow;
+    } finally {
       _updateResult();
       _notify();
-    }
-
-    final running = entry?.queryFnRunning;
-    if (running != null) {
-      try {
-        final value = await running as TData;
-        final queryResult = QueryResult<TData>(cacheKey, QueryStatus.success, value, null, isFetching: false);
-        _client.queryCache[cacheKey] = QueryCacheEntry<TData>(queryResult, DateTime.now());
-        _client.queryCache.config.onSuccess?.call(value);
-        // refresh observer entry
-        _currentEntry = _client.queryCache[cacheKey];
-      } catch (e) {
-        final queryResult = QueryResult<TData>(cacheKey, QueryStatus.error, null, e, isFetching: false);
-        _client.queryCache[cacheKey] = QueryCacheEntry<TData>(queryResult, DateTime.now());
-        _client.queryCache.config.onError?.call(e);
-        _currentEntry = _client.queryCache[cacheKey];
-      } finally {
-        _updateResult();
-        _notify();
-      }
     }
 
     return _currentResult;
@@ -180,6 +160,8 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
         res.error,
         isFetching: res.isFetching,
         isStale: isStale,
+        failureCount: res.failureCount,
+        failureReason: res.failureReason,
         refetch: ({bool? throwOnError}) => refetch(throwOnError: throwOnError),
       );
     }

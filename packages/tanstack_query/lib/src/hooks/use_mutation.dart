@@ -19,6 +19,8 @@ MutationResult<T, P> useMutation<T, P>(
     void Function(T?)? onSuccess,
     void Function(Object?)? onError,
     void Function(T?, Object?)? onSettle,
+    dynamic retry,
+    dynamic retryDelay,
     int? gcTime}) {
   final queryClient = useQueryClient();
 
@@ -30,6 +32,8 @@ MutationResult<T, P> useMutation<T, P>(
           onSuccess: onSuccess,
           onError: onError,
           onSettled: onSettle,
+          retry: retry,
+          retryDelay: retryDelay,
           gcTime: gcTime,
         ),
       ));
@@ -41,10 +45,12 @@ MutationResult<T, P> useMutation<T, P>(
       onSuccess: onSuccess,
       onError: onError,
       onSettled: onSettle,
+      retry: retry,
+      retryDelay: retryDelay,
       gcTime: gcTime,
     ));
     return null;
-  }, [observer, mutationFn, onSuccess, onError, onSettle, gcTime]);
+  }, [observer, mutationFn, onSuccess, onError, onSettle, retry, retryDelay, gcTime]);
 
   // Local result state that mirrors the observer's current result
   final resultState = useState<MutationObserverResult<T, P>>(observer.getCurrentResult());
@@ -75,5 +81,8 @@ MutationResult<T, P> useMutation<T, P>(
   }
 
   return MutationResult<T, P>(
-      mutate, mutateAsync, resetMutation, resultState.value.data, resultState.value.status, resultState.value.error);
+      mutate,
+      mutateAsync,
+      resetMutation,
+      () => resultState.value);
 }
