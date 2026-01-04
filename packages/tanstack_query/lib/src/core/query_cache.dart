@@ -119,6 +119,13 @@ class QueryCache extends Subscribable<QueryCacheListener> {
       return shouldRemove;
     });
     for (var entry in removedEntries.entries) {
+      // If there was a built Query instance for this key, cancel and remove it
+      if (_queries.containsKey(entry.key)) {
+        final q = _queries.remove(entry.key);
+        try {
+          if (q != null && q is Query) q.cancel();
+        } catch (_) {}
+      }
       _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.removed, entry.key, entry.value));
     }
   }
@@ -167,6 +174,16 @@ class QueryCache extends Subscribable<QueryCacheListener> {
   void clear({String? callerId}) {
     final keys = _cache.keys.toList();
     _cache.clear();
+
+    // Cancel and remove any built Query instances to avoid leaving pending
+    // timers (GC timers) running after the cache has been cleared.
+    for (var q in _queries.values) {
+      try {
+        if (q != null && q is Query) q.cancel();
+      } catch (_) {}
+    }
+    _queries.clear();
+
     for (var k in keys) {
       _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.removed, k, null, callerId: callerId));
     }

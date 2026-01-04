@@ -35,6 +35,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
   Duration? debounceTime,
   bool? refetchOnRestart,
   bool? refetchOnReconnect,
+  int? gcTime,
 }) {
   final queryClient = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
@@ -49,6 +50,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
             enabled: enabled,
             refetchOnRestart: refetchOnRestart,
             refetchOnReconnect: refetchOnReconnect,
+            gcTime: gcTime,
           ),
       [
         queryClient,
@@ -59,6 +61,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
         enabled,
         refetchOnRestart,
         refetchOnReconnect,
+        gcTime,
         cacheKey
       ]);
 

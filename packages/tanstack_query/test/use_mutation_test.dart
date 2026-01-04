@@ -8,7 +8,9 @@ void main() {
 
   setUp(() {
     // Ensure a fresh QueryClient instance between tests
-    client = QueryClient();
+    // Disable default GC in tests to avoid scheduling timers unless a test
+    // explicitly sets `gcTime` on the query options.
+    client = QueryClient(defaultOptions: const DefaultOptions(queries: QueryDefaultOptions(gcTime: 0)));
     client.mutationCache.clear();
   });
 
@@ -95,5 +97,48 @@ void main() {
     expect(holder.value!.error, isNotNull);
     expect(holder.value!.error.toString(), contains('boom'));
     expect(errorObj, isNotNull);
+  });
+
+  testWidgets('should garbage collect mutation after gcTime when unmounted', (WidgetTester tester) async {
+    final holder = ValueNotifier<MutationResult<String, String>?>(null);
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: client,
+        child: MaterialApp(
+          home: HookBuilder(
+            builder: (context) {
+              final result = useMutation<String, String>(
+                mutationFn: (params) async {
+                  await Future.delayed(Duration(milliseconds: 5));
+                  return 'ok';
+                },
+                gcTime: 50,
+              );
+
+              holder.value = result;
+              return Container();
+            },
+          ),
+        )));
+
+    // trigger a mutation which adds it to the cache
+    holder.value!.mutate('p');
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    // ensure cache contains a mutation
+    expect(client.mutationCache.getAll().isNotEmpty, isTrue);
+
+    // unmount the hook
+    await tester.pumpWidget(Container());
+
+    // wait for GC to run and remove the mutation
+    var tries = 0;
+    while (client.mutationCache.getAll().isNotEmpty && tries < 50) {
+      await tester.pump(Duration(milliseconds: 20));
+      tries++;
+    }
+
+    expect(client.mutationCache.getAll().isEmpty, isTrue);
   });
 }

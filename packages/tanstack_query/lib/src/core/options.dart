@@ -20,7 +20,10 @@ class QueryDefaultOptions {
 
 /// Default options placeholder for mutations.
 class MutationDefaultOptions {
-  const MutationDefaultOptions();
+  /// Default GC time (ms) for mutations. Defaults to 0 to disable GC by default.
+  final int gcTime;
+
+  const MutationDefaultOptions({this.gcTime = 0});
 }
 
 /// Container for default query and mutation options.

@@ -5,7 +5,9 @@ void main() {
   late QueryClient client;
 
   setUp(() {
-    client = QueryClient();
+    // Disable default GC in tests to avoid scheduling timers unless a test
+    // explicitly sets `gcTime` on the query options.
+    client = QueryClient(defaultOptions: const DefaultOptions(queries: QueryDefaultOptions(gcTime: 0)));
     client.mutationCache.clear();
   });
 

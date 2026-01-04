@@ -18,7 +18,8 @@ MutationResult<T, P> useMutation<T, P>(
     {required Future<T> Function(P) mutationFn,
     void Function(T?)? onSuccess,
     void Function(Object?)? onError,
-    void Function(T?, Object?)? onSettle}) {
+    void Function(T?, Object?)? onSettle,
+    int? gcTime}) {
   final queryClient = useQueryClient();
 
   // Create observer once per hook instance
@@ -29,6 +30,7 @@ MutationResult<T, P> useMutation<T, P>(
           onSuccess: onSuccess,
           onError: onError,
           onSettled: onSettle,
+          gcTime: gcTime,
         ),
       ));
 
@@ -39,9 +41,10 @@ MutationResult<T, P> useMutation<T, P>(
       onSuccess: onSuccess,
       onError: onError,
       onSettled: onSettle,
+      gcTime: gcTime,
     ));
     return null;
-  }, [observer, mutationFn, onSuccess, onError, onSettle]);
+  }, [observer, mutationFn, onSuccess, onError, onSettle, gcTime]);
 
   // Local result state that mirrors the observer's current result
   final resultState = useState<MutationObserverResult<T, P>>(observer.getCurrentResult());

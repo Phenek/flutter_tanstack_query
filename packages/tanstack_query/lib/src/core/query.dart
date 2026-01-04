@@ -51,13 +51,12 @@ class Query<T> {
   void scheduleGc() {
     _gcTimer?.cancel();
     final gc = options.gcTime ?? client.defaultOptions.queries.gcTime;
-    // Avoid scheduling very long-lived GC timers during tests which can
-    // leave pending timers and fail the test harness. Only schedule if
-    // a reasonably small GC time is configured.
-    if (gc <= 0 || gc > 10000) return;
+
+    // Do not schedule GC when disabled (gc <= 0 or null).
+    if (gc == null || gc <= 0) return;
 
     _gcTimer = Timer(Duration(milliseconds: gc), () {
-      if (!_observers.isNotEmpty) {
+      if (_observers.isEmpty) {
         client.queryCache.remove(cacheKey);
       }
     });
@@ -102,5 +101,7 @@ class Query<T> {
 
   void cancel() {
     _retryer?.cancel();
+    _gcTimer?.cancel();
+    _gcTimer = null;
   }
 }

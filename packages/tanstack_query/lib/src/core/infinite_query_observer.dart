@@ -15,6 +15,9 @@ class InfiniteQueryOptions<T> {
   final bool? refetchOnRestart;
   final bool? refetchOnReconnect;
 
+  /// Garbage collection time (milliseconds) after which unused queries are removed.
+  final int? gcTime;
+
   InfiniteQueryOptions({
     required this.queryKey,
     required this.queryFn,
@@ -25,6 +28,7 @@ class InfiniteQueryOptions<T> {
     this.enabled,
     this.refetchOnRestart,
     this.refetchOnReconnect,
+    this.gcTime,
   });
 }
 
@@ -305,8 +309,24 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
   void onUnsubscribe() {
     _isMounted = false;
     _timer?.cancel();
+
     try {
       _cacheUnsubscribe?.call();
+    } catch (_) {}
+
+    // Build or get a Query instance for this cache key and schedule GC.
+    // This ensures infinite queries (which manage their cache directly)
+    // are garbage collected when there are no observers.
+    try {
+      final qOptions = QueryOptions<T>(
+        queryFn: () async => (await _options.queryFn(_options.initialPageParam)) as T,
+        queryKey: _options.queryKey,
+        enabled: _options.enabled,
+        gcTime: _options.gcTime,
+      );
+
+      final q = _client.queryCache.build<T>(_client, qOptions);
+      q.scheduleGc();
     } catch (_) {}
   }
 

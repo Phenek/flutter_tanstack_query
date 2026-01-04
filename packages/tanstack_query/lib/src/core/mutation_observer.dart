@@ -47,8 +47,12 @@ class MutationObserver<T, P> extends Subscribable<Function> {
   Mutation<T, P>? _currentMutation;
   MutateOptions<T>? _mutateOptions;
 
+  /// Cache unsubscribe function for mutation cache events
+  void Function()? _cacheUnsubscribe;
+
   MutationObserver(this._client, this.options) {
     _updateResult();
+    _subscribeToCache();
   }
 
   void setOptions(MutationOptions<T, P> options) {
@@ -62,11 +66,36 @@ class MutationObserver<T, P> extends Subscribable<Function> {
     }
   }
 
+  /// Subscribe to mutation cache events so the observer can react to
+  /// mutations being removed/updated externally.
+  void _subscribeToCache() {
+    _cacheUnsubscribe = _client.mutationCache.subscribe(_handleCacheEvent);
+  }
+
+  void _handleCacheEvent(MutationCacheNotifyEvent event) {
+    // If the event mutation matches our current mutation, react accordingly
+    if (_currentMutation == null) return;
+    if (event.mutation != _currentMutation) return;
+
+    if (event.type == NotifyEventType.removed) {
+      // If our mutation was removed from cache, reset observer state
+      reset();
+    } else if (event.type == NotifyEventType.updated) {
+      // Mutation updated -> refresh result
+      _updateResult();
+      _notify();
+    }
+  }
+
   @override
   void onUnsubscribe() {
     if (!hasListeners()) {
       _currentMutation?.removeObserver(this);
     }
+
+    try {
+      _cacheUnsubscribe?.call();
+    } catch (_) {}
   }
 
   void onMutationUpdate(MutationAction<T> action) {

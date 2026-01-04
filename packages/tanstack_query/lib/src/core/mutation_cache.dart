@@ -60,6 +60,11 @@ class MutationCache extends Subscribable<MutationCacheListener> {
 
   /// Remove a mutation from the cache and notify subscribers.
   void remove(dynamic mutation) {
+    // Cancel GC timers on the mutation if present
+    try {
+      if (mutation != null && mutation is Mutation) mutation.cancel();
+    } catch (_) {}
+
     _mutations.remove(mutation);
     _notifySubscribers(MutationCacheNotifyEvent(NotifyEventType.removed, mutation));
   }
@@ -79,6 +84,13 @@ class MutationCache extends Subscribable<MutationCacheListener> {
 
   /// Clears the mutation cache entirely and notifies subscribers.
   void clear() {
+    // Cancel any pending GC timers for stored mutations
+    for (var m in _mutations) {
+      try {
+        if (m != null && m is Mutation) m.cancel();
+      } catch (_) {}
+    }
+
     _mutations.clear();
     _notifySubscribers(MutationCacheNotifyEvent(NotifyEventType.removed, null));
   }

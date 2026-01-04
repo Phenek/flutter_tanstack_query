@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:tanstack_query/tanstack_query.dart';
 
 /// Action emitted by a [Mutation] to observers.
@@ -33,6 +34,9 @@ class MutationOptions<T, P> {
   final void Function(Object?)? onError;
   final void Function(T?, Object?)? onSettled;
 
+  /// Garbage collection time (milliseconds) after which unused mutations are removed.
+  final int? gcTime;
+
   MutationOptions({
     required this.mutationFn,
     this.mutationKey,
@@ -40,6 +44,7 @@ class MutationOptions<T, P> {
     this.onSuccess,
     this.onError,
     this.onSettled,
+    this.gcTime,
   });
 }
 
@@ -52,14 +57,26 @@ class Mutation<T, P> {
   MutationState<T> state = MutationState<T>(null, MutationStatus.idle, null);
   final Set<dynamic> _observers = <dynamic>{};
 
-  Mutation(this.client, this.options);
+  /// GC timer id
+  Timer? _gcTimer;
+
+  Mutation(this.client, this.options) {
+    // Schedule initial GC according to options
+    scheduleGc();
+  }
 
   void addObserver(dynamic observer) {
     _observers.add(observer);
+    // Cancel GC when an observer attaches
+    _gcTimer?.cancel();
+    _gcTimer = null;
   }
 
   void removeObserver(dynamic observer) {
     _observers.remove(observer);
+    if (_observers.isEmpty) {
+      scheduleGc();
+    }
   }
 
   void _notifyObservers(MutationAction<T> action) {
@@ -70,6 +87,31 @@ class Mutation<T, P> {
         // ignore listener errors
       }
     }
+  }
+
+  /// Schedule garbage collection to remove this mutation from cache after gcTime.
+  void scheduleGc() {
+    _gcTimer?.cancel();
+    final gc = options.gcTime ?? client.defaultOptions.mutations.gcTime;
+
+    if (gc == null || gc <= 0) return;
+
+    _gcTimer = Timer(Duration(milliseconds: gc), () {
+      if (_observers.isEmpty) {
+        // If mutation is pending, reschedule GC; otherwise remove from cache
+        if (state.status == MutationStatus.pending) {
+          scheduleGc();
+          return;
+        }
+        client.mutationCache.remove(this);
+      }
+    });
+  }
+
+  /// Cancel any pending GC timers
+  void cancel() {
+    _gcTimer?.cancel();
+    _gcTimer = null;
   }
 
   /// Execute the mutation with [variables]. This updates internal state and
@@ -118,5 +160,7 @@ class Mutation<T, P> {
 
   void setOptions(MutationOptions<T, P> newOptions) {
     options = newOptions;
+    // Re-evaluate GC timing when options change
+    scheduleGc();
   }
 }

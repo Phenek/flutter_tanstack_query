@@ -8,7 +8,10 @@ void main() {
 
   setUp(() {
     // Ensure a fresh QueryClient instance and clear cache between tests
-    queryClient = QueryClient();
+    // Use a small gcTime during tests to avoid scheduling long-lived timers
+    // Disable default GC in tests to avoid scheduling timers unless a test
+    // explicitly sets `gcTime` on the query options.
+    queryClient = QueryClient(defaultOptions: const DefaultOptions(queries: QueryDefaultOptions(gcTime: 0)));
     queryClient.queryCache.clear();
   });
 
@@ -357,6 +360,47 @@ void main() {
     final cached = queryClient.queryCache[cacheKey2]!.result as QueryResult<String>;
     expect(cached.status, equals(QueryStatus.success));
     expect(cached.data, equals('page-2'));
+  });
+
+  testWidgets('should garbage collect query after gcTime when unmounted', (WidgetTester tester) async {
+    final holder = ValueNotifier<QueryResult<String>?>(null);
+    final keyList = ['gc-test'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+
+    // mount a widget that runs a query with a short gcTime
+    await tester.pumpWidget(QueryClientProvider(client: queryClient, child: MaterialApp(
+      home: HookBuilder(builder: (context) {
+        final result = useQuery<String>(
+          queryKey: keyList,
+          queryFn: () async {
+            await Future.delayed(Duration(milliseconds: 5));
+            return 'ok';
+          },
+          gcTime: 50, // ms
+        );
+
+        holder.value = result;
+        return Container();
+      }),
+    )));
+
+    // let the query complete and ensure the cache has the entry
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(queryClient.queryCache.containsKey(cacheKey), isTrue);
+
+    // unmount the hook (no observers should remain)
+    await tester.pumpWidget(QueryClientProvider(client: queryClient, child: MaterialApp(home: Container())));
+
+    // wait for the gc timer to fire (max ~500ms to avoid flakiness)
+    var tries = 0;
+    while (queryClient.queryCache.containsKey(cacheKey) && tries < 50) {
+      await tester.pump(Duration(milliseconds: 20));
+      tries++;
+    }
+
+    expect(queryClient.queryCache.containsKey(cacheKey), isFalse);
   });
 
 }

@@ -15,6 +15,10 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 /// - [enabled]: If `false`, disables automatic fetching until set to `true`.
 /// - [refetchOnRestart]: When `true`, refetches on app restart.
 /// - [refetchOnReconnect]: When `true`, refetches on reconnect.
+/// - [gcTime]: The garbage-collection time in milliseconds for this query's cache entry.
+///   When all observers are removed, the query will be removed from the cache after
+///   `gcTime` milliseconds. A value <= 0 disables GC. If unspecified, the client
+///   default is used (see `QueryDefaultOptions.gcTime`).
 ///
 /// Returns a [QueryResult<T>] representing the current query state and data.
 QueryResult<T> useQuery<T>(
@@ -23,7 +27,8 @@ QueryResult<T> useQuery<T>(
     double? staleTime,
     bool? enabled,
     bool? refetchOnRestart,
-    bool? refetchOnReconnect}) {
+    bool? refetchOnReconnect,
+    int? gcTime}) {
   final queryClient = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
 
@@ -36,8 +41,9 @@ QueryResult<T> useQuery<T>(
             enabled: enabled ?? queryClient.defaultOptions.queries.enabled,
             refetchOnRestart: refetchOnRestart,
             refetchOnReconnect: refetchOnReconnect,
+            gcTime: gcTime,
           ),
-      [queryClient, queryFn, staleTime, enabled, refetchOnRestart, refetchOnReconnect, cacheKey]);
+      [queryClient, queryFn, staleTime, enabled, refetchOnRestart, refetchOnReconnect, gcTime, cacheKey]);
 
   // Observer follows the same pattern as useInfiniteQuery: create once and
   // keep it in sync via setOptions to avoid complex lifecycle code in the hook.
