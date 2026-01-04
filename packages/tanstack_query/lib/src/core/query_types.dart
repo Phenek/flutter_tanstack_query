@@ -74,8 +74,15 @@ class QueryResult<T> {
   bool isFetching;
   Object? error;
 
+  /// Whether the cached value is considered stale.
+  bool isStale;
+
+  /// Optional refetch callback provided by observers so consumers can trigger
+  /// a refetch directly from the result object.
+  Future<QueryResult<T>> Function({bool? throwOnError})? refetch;
+
   QueryResult(this.key, this.status, this.data, this.error,
-      {this.isFetching = false});
+      {this.isFetching = false, this.isStale = false, this.refetch});
 
   bool get isError => status == QueryStatus.error;
   bool get isSuccess => status == QueryStatus.success;

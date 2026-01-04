@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'retryer.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 
 /// Minimal `Query` implementation to centralize fetch and observer logic.
@@ -71,10 +70,10 @@ class Query<T> {
       return _retryer!.start();
     }
 
-    final fn = () async {
+    Future<T> fn() async {
       // Execute the query function
       return await options.queryFn();
-    };
+    }
 
     _retryer = Retryer<T>(fn: fn, retry: options.retry ?? client.defaultOptions.queries.retry, retryDelay: options.retryDelay ?? client.defaultOptions.queries.retryDelay);
 

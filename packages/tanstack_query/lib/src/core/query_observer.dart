@@ -1,32 +1,12 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 import 'subscribable.dart';
 
-/// Result shape returned by the observer.
-class QueryObserverResult<T, E> {
-  final T? data;
-  final Object? error;
-  final String status;
-  final bool isFetching;
-  final bool isSuccess;
-  final bool isError;
-  final bool isStale;
-
-  final Future<QueryObserverResult<T, E>> Function({bool? throwOnError}) refetch;
-
-  QueryObserverResult({
-    required this.data,
-    required this.error,
-    required this.status,
-    required this.isFetching,
-    required this.isSuccess,
-    required this.isError,
-    required this.isStale,
-    required this.refetch,
-  });
-}
-
 /// Listener typedef used by `QueryObserver`.
-typedef QueryObserverListener<T, E> = void Function(QueryObserverResult<T, E>);
+///
+/// shape so hooks can consume it without an extra mapping step.
+typedef QueryObserverListener<T, E> = void Function(QueryResult<T>);
 
 /// A simplified `QueryObserver` that mirrors the behavior of the JS implementation
 /// insofar as it maintains a current result based on a Query, can be subscribed
@@ -34,13 +14,27 @@ typedef QueryObserverListener<T, E> = void Function(QueryObserverResult<T, E>);
 class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> {
   final QueryClient _client;
   QueryOptions<TQueryFnData> options;
-
+  
+  QueryResult<TData> _currentResult;
   QueryCacheEntry? _currentEntry;
-  QueryObserverResult<TData, TError>? _currentResult;
   Query? _query;
 
-  QueryObserver(this._client, this.options) {
+  // Unique id used to avoid reacting to our own cache events
+  final String _callerId = DateTime.now().microsecondsSinceEpoch.toString();
+  void Function()? _cacheUnsubscribe;
+
+  QueryObserver(
+    this._client,
+    this.options,
+  ) : _currentResult = QueryResult<TData>(
+          queryKeyToCacheKey(options.queryKey),
+          QueryStatus.pending,
+          null,
+          null,
+        ) {
     _updateQuery();
+    _initFromCache();
+    _subscribeToCache();
     _updateResult();
   }
 
@@ -58,11 +52,12 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
 
     // If queryKey changed or it transitioned from disabled->enabled, trigger a refetch
     if (prevKey != nextKey || (!prevEnabled && nextEnabled)) {
+      debugPrint('QueryObserver.setOptions: key changed from $prevKey -> $nextKey; triggering refetch');
       refetch();
     }
   }
 
-  QueryObserverResult<TData, TError> getCurrentResult() => _currentResult!;
+  QueryResult<TData> getCurrentResult() => _currentResult;
 
   @override
   void onSubscribe() {
@@ -74,11 +69,10 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
 
     final enabled = options.enabled ?? true;
 
-    final shouldFetch = enabled && (
-      entry == null ||
-      (entry.result is QueryResult && (entry.result as QueryResult).isError) ||
-      (DateTime.now().difference(entry.timestamp).inMilliseconds > (options.staleTime ?? 0))
-    );
+    final shouldFetch = enabled &&
+        (entry == null ||
+            (entry.result is QueryResult && (entry.result as QueryResult).isError) ||
+            (DateTime.now().difference(entry.timestamp).inMilliseconds > (options.staleTime ?? 0)));
 
     if (shouldFetch) {
       // Fire-and-forget the fetch
@@ -89,19 +83,25 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
   @override
   void onUnsubscribe() {
     try {
+      _cacheUnsubscribe?.call();
+    } catch (_) {}
+    try {
       _query?.removeObserver(this);
       _query?.scheduleGc();
       _query = null;
     } catch (_) {}
   }
 
-  Future<QueryObserverResult<TData, TError>> refetch({bool? throwOnError}) async {
+  Future<QueryResult<TData>> refetch({bool? throwOnError}) async {
     _updateQuery();
     final cacheKey = queryKeyToCacheKey(options.queryKey);
 
     var entry = _client.queryCache[cacheKey];
 
-    if (entry == null || entry.queryFnRunning == null || entry.queryFnRunning!.isCompleted || entry.queryFnRunning!.hasError) {
+    if (entry == null ||
+        entry.queryFnRunning == null ||
+        entry.queryFnRunning!.isCompleted ||
+        entry.queryFnRunning!.hasError) {
       final queryResult = QueryResult<TData>(cacheKey, QueryStatus.pending, null, null, isFetching: true);
       final futureFetch = TrackedFuture<TData>(options.queryFn() as Future<TData>);
       _client.queryCache[cacheKey] = QueryCacheEntry<TData>(queryResult, DateTime.now(), queryFnRunning: futureFetch);
@@ -132,7 +132,7 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
       }
     }
 
-    return _currentResult!;
+    return _currentResult;
   }
 
   void onQueryUpdate() {
@@ -166,48 +166,73 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
 
   void _updateResult() {
     final entry = _currentEntry;
-    final resDynamic = entry?.result;
+    final res = entry?.result;
 
-    TData? data;
-    Object? error;
-    QueryStatus? status;
-    bool isFetching = false;
-    bool isSuccess = false;
-    bool isError = false;
+    if (res is QueryResult) {
+      final cacheKey = queryKeyToCacheKey(options.queryKey);
+      final isStale =
+          entry == null || DateTime.now().difference(entry.timestamp).inMilliseconds > (options.staleTime ?? 0);
 
-    if (resDynamic is QueryResult) {
-      data = resDynamic.data as TData?;
-      error = resDynamic.error;
-      status = resDynamic.status;
-      isFetching = resDynamic.isFetching;
-      isSuccess = resDynamic.isSuccess;
-      isError = resDynamic.isError;
+      _currentResult = QueryResult<TData>(
+        cacheKey,
+        res.status,
+        res.data as TData?,
+        res.error,
+        isFetching: res.isFetching,
+        isStale: isStale,
+        refetch: ({bool? throwOnError}) => refetch(throwOnError: throwOnError),
+      );
     }
+  }
 
-    final statusStr = status == QueryStatus.success
-        ? 'success'
-        : (status == QueryStatus.error ? 'error' : 'pending');
+  void _initFromCache() {
+    final cacheKey = queryKeyToCacheKey(options.queryKey);
+    final cacheEntry = _client.queryCache[cacheKey];
+    if (cacheEntry != null && cacheEntry.result is QueryResult) {
+      _currentEntry = cacheEntry;
+      _updateResult();
+    }
+  }
 
-    _currentResult = QueryObserverResult<TData, TError>(
-      data: data,
-      error: error,
-      status: statusStr,
-      isFetching: isFetching,
-      isSuccess: isSuccess,
-      isError: isError,
-      isStale: entry == null ? true : DateTime.now().difference(entry.timestamp).inMilliseconds > (options.staleTime ?? 0),
-      refetch: ({bool? throwOnError}) => refetch(throwOnError: throwOnError),
-    );
+  void _handleCacheEvent(QueryCacheNotifyEvent event) {
+    if (event.cacheKey != queryKeyToCacheKey(options.queryKey)) return;
+    if (event.callerId != null && event.callerId == _callerId) return;
+
+    try {
+      if (event.type == QueryCacheEventType.removed) {
+        final cacheKey = queryKeyToCacheKey(options.queryKey);
+        _currentResult = QueryResult<TData>(cacheKey, QueryStatus.pending, null, null, isFetching: false);
+        _notify();
+      } else if (event.type == QueryCacheEventType.added || event.type == QueryCacheEventType.updated) {
+        final dynamic raw = event.entry?.result;
+        if (raw is QueryResult) {
+          _currentEntry = event.entry;
+          _updateResult();
+          _notify();
+        }
+      } else if (event.type == QueryCacheEventType.refetch ||
+          (event.type == QueryCacheEventType.refetchOnRestart &&
+              (options.refetchOnRestart ?? _client.defaultOptions.queries.refetchOnRestart)) ||
+          (event.type == QueryCacheEventType.refetchOnReconnect &&
+              (options.refetchOnReconnect ?? _client.defaultOptions.queries.refetchOnReconnect))) {
+        // Trigger a refetch according to the cache event and options
+        refetch();
+      }
+    } catch (e) {
+      debugPrint(e.toString());
+    }
+  }
+
+  void _subscribeToCache() {
+    _cacheUnsubscribe = _client.queryCache.subscribe(_handleCacheEvent);
   }
 
   void _notify() {
     notifyAll((listener) {
       try {
         final typed = listener as QueryObserverListener<TData, TError>;
-        typed(_currentResult!);
+        typed(_currentResult);
       } catch (_) {}
     });
-
-
   }
 }

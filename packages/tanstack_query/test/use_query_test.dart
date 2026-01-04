@@ -246,6 +246,117 @@ void main() {
     expect(holder.value!.status, equals(QueryStatus.success));
     expect(holder.value!.data, equals('cached'));
   });
-}
 
-// No helper widgets — tests inspect the hook result directly via ValueNotifiers.
+  testWidgets('should refetch when queryKey changes (pagination)', (WidgetTester tester) async {
+    final holder = ValueNotifier<QueryResult<String>?>(null);
+
+    // initial page 1
+    await tester.pumpWidget(QueryClientProvider(client: queryClient, child: MaterialApp(
+      home: HookBuilder(builder: (context) {
+        final result = useQuery<String>(
+          queryKey: ['pagination', 1],
+          queryFn: () async {
+            await Future.delayed(Duration(milliseconds: 5));
+            return 'page-1';
+          },
+        );
+
+        holder.value = result;
+        return Container();
+      }),
+    )));
+
+    // let initial fetch complete
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(holder.value!.status, equals(QueryStatus.success));
+    expect(holder.value!.data, equals('page-1'));
+
+    // rebuild with a changed queryKey to simulate changing page (page 2)
+    await tester.pumpWidget(QueryClientProvider(client: queryClient, child: MaterialApp(
+      home: HookBuilder(builder: (context) {
+        final result = useQuery<String>(
+          queryKey: ['pagination', 2],
+          queryFn: () async {
+            await Future.delayed(Duration(milliseconds: 5));
+            return 'page-2';
+          },
+        );
+
+        holder.value = result;
+        return Container();
+      }),
+    )));
+
+    // allow refetch to run and complete
+    await tester.pump();
+
+    // Wait until the cache contains the fresh page result (avoid flakiness
+    // due to hook rebuild timing) — this verifies the refetch completed.
+    final cacheKey2 = queryKeyToCacheKey(['pagination', 2]);
+    var tries = 0;
+    while ((queryClient.queryCache[cacheKey2] == null || (queryClient.queryCache[cacheKey2]!.result as QueryResult<String>).status != QueryStatus.success) && tries < 50) {
+      await tester.pump(Duration(milliseconds: 10));
+      tries++;
+    }
+
+    expect(queryClient.queryCache.containsKey(cacheKey2), isTrue);
+    final cached = queryClient.queryCache[cacheKey2]!.result as QueryResult<String>;
+    expect(cached.status, equals(QueryStatus.success));
+    expect(cached.data, equals('page-2'));
+  });
+
+  testWidgets('should fetch when queryKey contains a Map (pagination map)', (WidgetTester tester) async {
+    final holder = ValueNotifier<QueryResult<String>?>(null);
+
+    // initial page 1 with Map as part of the key
+    await tester.pumpWidget(QueryClientProvider(client: queryClient, child: MaterialApp(
+      home: HookBuilder(builder: (context) {
+        final result = useQuery<String>(
+          queryKey: ['pagination', {'number': 1, 'size': 5}],
+          queryFn: () async {
+            await Future.delayed(Duration(milliseconds: 5));
+            return 'page-1';
+          },
+        );
+
+        holder.value = result;
+        return Container();
+      }),
+    )));
+
+    // let initial fetch finish
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(holder.value!.status, equals(QueryStatus.success));
+    expect(holder.value!.data, equals('page-1'));
+    expect(holder.value!.isFetching, isFalse);
+
+    // change page -> page 2 (Map changes)
+    await tester.pumpWidget(QueryClientProvider(client: queryClient, child: MaterialApp(
+      home: HookBuilder(builder: (context) {
+        final result = useQuery<String>(
+          queryKey: ['pagination', {'number': 2, 'size': 5}],
+          queryFn: () async {
+            await Future.delayed(Duration(milliseconds: 5));
+            return 'page-2';
+          },
+        );
+
+        holder.value = result;
+        return Container();
+      }),
+    )));
+
+    await tester.pumpAndSettle();
+
+    final cacheKey2 = queryKeyToCacheKey(['pagination', {'number': 2, 'size': 5}]);
+    expect(queryClient.queryCache.containsKey(cacheKey2), isTrue);
+    final cached = queryClient.queryCache[cacheKey2]!.result as QueryResult<String>;
+    expect(cached.status, equals(QueryStatus.success));
+    expect(cached.data, equals('page-2'));
+  });
+
+}
