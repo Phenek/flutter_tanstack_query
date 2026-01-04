@@ -1,27 +1,27 @@
 import 'dart:async';
 import 'package:tanstack_query/tanstack_query.dart';
+import 'removable.dart';
 
 /// Minimal `Query` implementation to centralize fetch and observer logic.
-class Query<T> {
+class Query<T> extends Removable {
   final QueryClient client;
   QueryOptions<T> options;
   final String cacheKey;
 
   final Set<dynamic> _observers = <dynamic>{};
 
-  /// GC timer id
-  Timer? _gcTimer;
-
   /// Active retryer
   Retryer<T>? _retryer;
 
-  Query(this.client, this.options) : cacheKey = queryKeyToCacheKey(options.queryKey);
+  Query(this.client, this.options) : cacheKey = queryKeyToCacheKey(options.queryKey) {
+    // Initialize GC timing using options + client defaults
+    updateGcTime(options.gcTime, defaultGcTime: client.defaultOptions.queries.gcTime);
+  }
 
   void addObserver(dynamic observer) {
     _observers.add(observer);
     // If an observer is added, cancel GC
-    _gcTimer?.cancel();
-    _gcTimer = null;
+    clearGcTimeout();
   }
 
   void removeObserver(dynamic observer) {
@@ -47,20 +47,7 @@ class Query<T> {
     }
   }
 
-  /// Schedule garbage collection to remove this query from cache after gcTime.
-  void scheduleGc() {
-    _gcTimer?.cancel();
-    final gc = options.gcTime ?? client.defaultOptions.queries.gcTime;
 
-    // Do not schedule GC when disabled (gc <= 0 or null).
-    if (gc == null || gc <= 0) return;
-
-    _gcTimer = Timer(Duration(milliseconds: gc), () {
-      if (_observers.isEmpty) {
-        client.queryCache.remove(cacheKey);
-      }
-    });
-  }
 
   /// Fetch using Retryer with retry configuration from options.
   Future<T?> fetch() async {
@@ -101,7 +88,11 @@ class Query<T> {
 
   void cancel() {
     _retryer?.cancel();
-    _gcTimer?.cancel();
-    _gcTimer = null;
+    clearGcTimeout();
+  }
+
+  @override
+  void optionalRemove() {
+    client.queryCache.remove(cacheKey);
   }
 }
