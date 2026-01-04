@@ -64,6 +64,16 @@ MutationResult<T, P> useMutation<T, P>(
     observer.mutate(params).then((_) {}, onError: (_) {});
   }
 
+  // Async mutate that returns the future from the observer
+  Future<T> mutateAsync(P params, [MutateOptions<T>? options]) {
+    return observer.mutate(params, options);
+  }
+
+  // Reset mutation state
+  void resetMutation() {
+    observer.reset();
+  }
+
   return MutationResult<T, P>(
-      mutate, resultState.value.data, resultState.value.status, resultState.value.error);
+      mutate, mutateAsync, resetMutation, resultState.value.data, resultState.value.status, resultState.value.error);
 }

@@ -1,4 +1,5 @@
 import 'types.dart';
+import 'mutation.dart';
 
 /// Represents the current state of a mutation operation.
 class MutationState<T> {
@@ -30,7 +31,13 @@ class MutationState<T> {
 /// current mutation state (`status`, `data`, `error`).
 class MutationResult<T, P> {
   /// Function to trigger the mutation.
-  final Function(P) mutate;
+  final void Function(P) mutate;
+
+  /// Async version of `mutate` that returns a `Future<T>`.
+  final Future<T> Function(P, [MutateOptions<T>?]) mutateAsync;
+
+  /// Reset the mutation state.
+  final void Function() reset;
 
   /// The latest mutation data, if available.
   final T? data;
@@ -41,7 +48,7 @@ class MutationResult<T, P> {
   /// The error from the last mutation, if any.
   final Object? error;
 
-  MutationResult(this.mutate, this.data, this.status, this.error);
+  MutationResult(this.mutate, this.mutateAsync, this.reset, this.data, this.status, this.error);
 
   /// Whether the mutation is currently idle.
   bool get isIdle => status == MutationStatus.idle;
