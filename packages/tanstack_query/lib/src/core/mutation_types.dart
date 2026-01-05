@@ -1,4 +1,4 @@
-import 'types.dart';
+import 'package:tanstack_query/tanstack_query.dart';
 
 /// Represents the current state of a mutation operation.
 class MutationState<T> {
@@ -11,7 +11,13 @@ class MutationState<T> {
   /// Error object when the mutation failed, if any.
   final Object? error;
 
-  MutationState(this.data, this.status, this.error);
+  /// The number of times the mutation has failed in its current lifecycle.
+  final int failureCount;
+
+  /// The last failure reason (if any).
+  final Object? failureReason;
+
+  MutationState(this.data, this.status, this.error, {this.failureCount = 0, this.failureReason});
 
   /// Whether the mutation is currently idle.
   bool get isIdle => status == MutationStatus.idle;
@@ -30,18 +36,24 @@ class MutationState<T> {
 /// current mutation state (`status`, `data`, `error`).
 class MutationResult<T, P> {
   /// Function to trigger the mutation.
-  final Function(P) mutate;
+  final void Function(P) mutate;
 
-  /// The latest mutation data, if available.
-  final T? data;
+  /// Async version of `mutate` that returns a `Future<T>`.
+  final Future<T> Function(P, [MutateOptions<T>?]) mutateAsync;
 
-  /// Current mutation status.
-  final MutationStatus status;
+  /// Reset the mutation state.
+  final void Function() reset;
 
-  /// The error from the last mutation, if any.
-  final Object? error;
+  /// Internal supplier to get the latest observer result when accessed.
+  final MutationObserverResult<T, P> Function() _getCurrent;
 
-  MutationResult(this.mutate, this.data, this.status, this.error);
+  MutationResult(this.mutate, this.mutateAsync, this.reset, this._getCurrent);
+
+  T? get data => _getCurrent().data;
+  MutationStatus get status => _getCurrent().status;
+  Object? get error => _getCurrent().error;
+  int get failureCount => _getCurrent().failureCount;
+  Object? get failureReason => _getCurrent().failureReason;
 
   /// Whether the mutation is currently idle.
   bool get isIdle => status == MutationStatus.idle;

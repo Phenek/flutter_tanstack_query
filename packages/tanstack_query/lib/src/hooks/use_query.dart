@@ -1,155 +1,98 @@
 import 'package:tanstack_query/tanstack_query.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:flutter/material.dart';
 
-/// Subscribes to a query identified by [queryKey] and manages its lifecycle.
+/// Subscribe to a query identified by [queryKey] and manage its lifecycle.
 ///
 /// [queryFn] is called to fetch data. Returns a [QueryResult<T>] that contains
-/// `data`, `error`, and `status` flags that can be used by widgets.
+/// `data`, `error`, and `status` flags to drive UI states.
 ///
 /// Parameters:
-/// - [queryFn]: Function that returns a `Future<T>` with the data.
-/// - [queryKey]: A list of objects uniquely identifying the query.
-/// - [staleTime]: Duration in milliseconds after which cached data is considered
-///   stale and will be refetched when `useQuery` runs (default behavior uses
-///   `DefaultOptions`).
-/// - [enabled]: If `false`, disables automatic fetching until set to `true`.
+/// - [queryFn] (required): Function returning a `Future<T>` used to fetch data.
+/// - [queryKey] (required): A `List<Object>` uniquely identifying the query.
+/// - [staleTime]: Time in **milliseconds** after which cached data is considered
+///   stale and will be refetched on next access. If null, the client's default
+///   `staleTime` is used.
+/// - [enabled]: When `false`, automatic fetching is disabled until `true`.
+///   Defaults to `queryClient.defaultOptions.queries.enabled`.
 /// - [refetchOnRestart]: When `true`, refetches on app restart.
 /// - [refetchOnReconnect]: When `true`, refetches on reconnect.
+/// - [gcTime]: Garbage-collection time in milliseconds for this query's cache
+///   entry. When all observers are removed, the query will be removed from the
+///   cache after `gcTime` ms. A value <= 0 disables GC. If unspecified, the
+///   client default is used.
+/// - [retry]: Controls retry behavior; same accepted forms as in `useMutation`:
+///   `false`, `true`, an `int`, or a function `(failureCount, error) => bool`.
+/// - [retryOnMount]: If `false`, a query that currently has an error will not
+///   attempt to retry when mounted.
+/// - [retryDelay]: Milliseconds between retries, or a function
+///   `(attempt, error) => int` returning the delay in ms.
 ///
-/// Returns a [QueryResult<T>] representing the current query state and data.
+/// Returns:
+/// The current [QueryResult<T>] for the query (fields include `data`, `error`,
+/// and `status`).
 QueryResult<T> useQuery<T>(
     {required Future<T> Function() queryFn,
     required List<Object> queryKey,
     double? staleTime,
     bool? enabled,
     bool? refetchOnRestart,
-    bool? refetchOnReconnect}) {
+    bool? refetchOnReconnect,
+    int? gcTime,
+    dynamic retry,
+    bool? retryOnMount,
+    dynamic retryDelay}) {
+  final queryClient = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
-  var cacheEntry = cacheQuery[cacheKey];
-  var isFirstRequest = useRef(true);
-  final callerId =
-      useMemoized(() => DateTime.now().microsecondsSinceEpoch.toString(), []);
-  final result = useState<QueryResult<T>>(
-      cacheEntry != null && cacheEntry.result.isSuccess
-          ? QueryResult<T>(cacheKey, cacheEntry.result.status,
-              cacheEntry.result.data as T?, cacheEntry.result.error,
-              isFetching: cacheEntry.result.isFetching)
-          : QueryResult<T>(cacheKey, QueryStatus.pending, null, null,
-              isFetching: false));
-  late QueryCacheListener queryCacheListener;
-  var isMounted = true;
 
-  void updateCache(QueryResult<T> queryResult) {
-    if (queryResult.data == null && cacheQuery.containsKey(cacheKey)) {
-      cacheQuery.remove(cacheKey);
-      return;
-    }
+  // Build initial QueryOptions and create an observer lazily
+  final options = useMemoized(
+      () => QueryOptions<T>(
+            queryFn: queryFn,
+            queryKey: queryKey,
+            staleTime: staleTime,
+            enabled: enabled ?? queryClient.defaultOptions.queries.enabled,
+            refetchOnRestart: refetchOnRestart,
+            refetchOnReconnect: refetchOnReconnect,
+            gcTime: gcTime,
+            retry: retry,
+            retryOnMount: retryOnMount,
+            retryDelay: retryDelay,
+          ),
+      [queryClient, queryFn, staleTime, enabled, refetchOnRestart, refetchOnReconnect, gcTime, retry, retryOnMount, retryDelay, cacheKey]);
 
-    cacheQuery[cacheKey] = CacheQuery(queryResult, DateTime.now());
-    QueryClient.instance
-        .notifyUpdate(cacheKey, queryResult, excludeCallerId: callerId);
-  }
+  // Observer follows the same pattern as useInfiniteQuery: create once and
+  // keep it in sync via setOptions to avoid complex lifecycle code in the hook.
+  // Create the observer once for this cache key and keep it in sync via setOptions
+  final observer = useMemoized<QueryObserver<T, Object?, T>>(
+      () => QueryObserver<T, Object?, T>(queryClient, options), [queryClient, cacheKey]);
 
-  void fetch() {
-    isFirstRequest.value = false;
-    var cacheEntry = cacheQuery[cacheKey];
-    var shouldUpdateTheCache = false;
+  // Keep observer options in sync when any option changes
+  useEffect(() {
+    observer.setOptions(options);
+    return null;
+  }, [observer, options]);
 
-    // If there's no cache entry, or there is no currently running fetch (or it finished/errored),
-    // create a new fetch. This ensures we can refetch stale data even when cached data exists.
-    if (cacheEntry == null ||
-        (cacheEntry.queryFnRunning == null ||
-            cacheEntry.queryFnRunning!.isCompleted ||
-            cacheEntry.queryFnRunning!.hasError)) {
-      var queryResult = QueryResult<T>(
-          cacheKey, QueryStatus.pending, null, null,
-          isFetching: true);
-
-      var futureFetch = TrackedFuture(queryFn());
-
-      cacheQuery[cacheKey] = cacheEntry = CacheQuery<T>(
-          queryResult, DateTime.now(),
-          queryFnRunning: futureFetch);
-
-      shouldUpdateTheCache = true;
-    }
-    // Loading State: cacheEntry has a Running Function, set result to propagate the loading state
-    var futureFetch = cacheEntry.queryFnRunning;
-    if (isMounted) result.value = cacheEntry.result as QueryResult<T>;
-
-    futureFetch?.then((value) {
-      final queryResult = QueryResult<T>(
-          cacheKey, QueryStatus.success, value, null,
-          isFetching: false);
-      if (isMounted) result.value = queryResult;
-      if (shouldUpdateTheCache) updateCache(queryResult);
-
-      QueryClient.instance.queryCache?.config.onSuccess?.call(value);
-    }).catchError((e) {
-      final queryResult = QueryResult<T>(cacheKey, QueryStatus.error, null, e,
-          isFetching: false);
-      if (isMounted) result.value = queryResult;
-      if (shouldUpdateTheCache) updateCache(queryResult);
-
-      QueryClient.instance.queryCache?.config.onError?.call(e);
-    });
-  }
+  // use the observer's result directly (it already exposes a `QueryResult<T>`)
+  final state = useState<QueryResult<T>>(observer.getCurrentResult());
 
   useEffect(() {
-    if ((enabled ?? QueryClient.instance.defaultOptions.queries.enabled) ==
-        false) {
-      return null;
-    }
-
-    bool shouldFetch = result.value.data == null ||
-        result.value.isError ||
-        result.value.key != cacheKey;
-
-    //Check StaleTime here
-    if (isFirstRequest.value == true &&
-        staleTime != double.infinity &&
-        cacheEntry != null) {
-      staleTime ??= 0;
-      final isStale =
-          DateTime.now().difference(cacheEntry.timestamp).inMilliseconds >
-              staleTime!;
-      shouldFetch = shouldFetch || isStale;
-    }
-
-    if (shouldFetch) {
-      fetch();
-    }
-
-    // Listen to changes in QueryClient
-    listenCacheUpdate(dynamic newResult) {
+    // Subscribe with a typed listener matching QueryObserver's contract
+    final unsubscribe = observer.subscribe((QueryResult<T> res) {
       try {
-        if (!isMounted) return;
+        state.value = res;
+        print('useQuery - status ${state.value.status} value: ${state.value}');
+      } catch (_) {}
+    });
 
-        // Accept dynamic payloads from core cache; convert to QueryResult as needed
-        if (newResult == null) {
-          result.value = QueryResult<T>(
-              cacheKey, QueryStatus.pending, null, null,
-              isFetching: false);
-        } else {
-          result.value = QueryResult<T>(
-              cacheKey, newResult.status, newResult.data as T?, newResult.error,
-              isFetching: newResult.isFetching);
-        }
-      } catch (e) {
-        debugPrint(e.toString());
-      }
-    }
-
-    queryCacheListener = QueryCacheListener(callerId, false, fetch,
-        listenCacheUpdate, refetchOnRestart, refetchOnReconnect);
-    QueryClient.instance.addListener(queryKey, queryCacheListener);
+    // initialize
+    // state.value = observer.getCurrentResult();
+    // print('initialize useQuery - status ${state.value.status} value: ${state.value}');
 
     return () {
-      isMounted = false;
-      QueryClient.instance.removeListener(queryKey, queryCacheListener);
+      unsubscribe();
+      print('dispose useQuery - status ${state.value.status} value: ${state.value}');
     };
-  }, [enabled, ...queryKey]);
+  }, [observer, cacheKey]);
 
-  return result.value;
+  return state.value;
 }

@@ -16,7 +16,6 @@ class TodosPage extends HookWidget {
     final getAllTodosQuery = useQuery(
       queryKey: ["Classical", GetAllTodosApi.name, page.value.toJson()],
       queryFn: () => GetAllTodosApi.request(page.value),
-      staleTime: 0,
     );
 
     Widget content = const SizedBox.shrink();

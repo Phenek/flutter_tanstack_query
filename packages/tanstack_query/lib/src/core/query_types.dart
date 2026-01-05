@@ -13,19 +13,36 @@ class QueryOptions<T> {
   /// Whether the query is enabled.
   final bool? enabled;
 
+  /// Retry options: can be `bool` (true = infinite, false = none), `int` (max attempts),
+  /// or a function `(failureCount, error) => bool` that returns whether to retry.
+  final dynamic retry;
+
+  /// Retry delay in milliseconds or a function `(attempt, error) => int`.
+  final dynamic retryDelay;
+
+  /// Whether the query should be retried on mount when it contains an error.
+  final bool? retryOnMount;
+
   /// Whether the query should refetch on app restart.
   final bool? refetchOnRestart;
 
   /// Whether the query should refetch on reconnect.
   final bool? refetchOnReconnect;
 
-  const QueryOptions({
+  /// Garbage collection time (milliseconds) after which unused queries are removed.
+  final int? gcTime;
+
+  QueryOptions({
     required this.queryFn,
     required this.queryKey,
     this.staleTime,
     this.enabled,
+    this.retry,
+    this.retryDelay,
+    this.retryOnMount,
     this.refetchOnRestart,
     this.refetchOnReconnect,
+    this.gcTime,
   });
 
   QueryOptions<T> copyWith({
@@ -33,16 +50,24 @@ class QueryOptions<T> {
     List<Object>? queryKey,
     double? staleTime,
     bool? enabled,
+    dynamic retry,
+    dynamic retryDelay,
+    bool? retryOnMount,
     bool? refetchOnRestart,
     bool? refetchOnReconnect,
+    int? gcTime,
   }) {
     return QueryOptions<T>(
       queryFn: queryFn ?? this.queryFn,
       queryKey: queryKey ?? this.queryKey,
       staleTime: staleTime ?? this.staleTime,
       enabled: enabled ?? this.enabled,
+      retry: retry ?? this.retry,
+      retryDelay: retryDelay ?? this.retryDelay,
+      retryOnMount: retryOnMount ?? this.retryOnMount,
       refetchOnRestart: refetchOnRestart ?? this.refetchOnRestart,
       refetchOnReconnect: refetchOnReconnect ?? this.refetchOnReconnect,
+      gcTime: gcTime ?? this.gcTime,
     );
   }
 }
@@ -58,8 +83,26 @@ class QueryResult<T> {
   bool isFetching;
   Object? error;
 
+  /// The number of times the query has failed in its current fetch cycle.
+  /// Incremented each time a retry attempt fails and reset to 0 on success.
+  int failureCount;
+
+  /// The last failure reason (if any). Reset to `null` on success.
+  Object? failureReason;
+
+  /// Whether the cached value is considered stale.
+  bool isStale;
+
+  /// Optional refetch callback provided by observers so consumers can trigger
+  /// a refetch directly from the result object.
+  Future<QueryResult<T>> Function({bool? throwOnError})? refetch;
+
   QueryResult(this.key, this.status, this.data, this.error,
-      {this.isFetching = false});
+      {this.isFetching = false,
+      this.isStale = false,
+      this.refetch,
+      this.failureCount = 0,
+      this.failureReason});
 
   bool get isError => status == QueryStatus.error;
   bool get isSuccess => status == QueryStatus.success;

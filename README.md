@@ -55,7 +55,7 @@ Example: Queries, Mutations and Invalidation (tanstack style)
 
 This short example demonstrates the three core concepts used by React Query:
 Queries, Mutations and Query Invalidation. It uses `useQuery` to fetch todos,
-`useMutation` to add a todo, and `QueryClient.instance.invalidateQueries` to
+`useMutation` to add a todo, and `queryClient.invalidateQueries` to
 refetch after a successful mutation.
 
 ```dart
@@ -80,6 +80,7 @@ Future<Map<String, dynamic>> postTodo(Map<String, dynamic> todo) async {
 class Todos extends HookWidget {
   @override
   Widget build(BuildContext context) {
+    final queryClient = useQueryClient();
     // Queries
     final todosQuery = useQuery<List<Map<String, dynamic>>>(
       queryKey: ['todos'],
@@ -91,7 +92,7 @@ class Todos extends HookWidget {
       mutationFn: postTodo,
       onSuccess: (_) {
         // Invalidate and refetch the todos query after successful mutation
-        QueryClient.instance.invalidateQueries(queryKey: ['todos']);
+        queryClient.invalidateQueries(queryKey: ['todos']);
       },
     );
 
@@ -126,7 +127,6 @@ class Todos extends HookWidget {
 ```
 
 ## Other useful API notes
-- QueryClient.instance is used internally by hooks to find the active client.
 - QueryClient provides helper methods like `invalidateQueries` and `clear` to trigger refetches or wipe cache.
 - The core `query_core` package contains `DefaultOptions`, `QueryCacheConfig` and `MutationCacheConfig` types.
 
@@ -149,7 +149,7 @@ Example: call the client on app restart
 ```dart
 AppLifecycleListener(
   onRestart: () {
-    QueryClient.instance.refetchOnRestart();
+    queryClient.refetchOnRestart();
   },
   child: MyApp(),
 );
@@ -167,10 +167,10 @@ static InternetConnection connectivity = InternetConnection();
 
 connectivity.onStatusChange.listen((status) {
   if (status case InternetStatus.connected) {
-    QueryClient.instance.refetchOnReconnect();
+    queryClient.refetchOnReconnect();
   }
 });
 ```
 ### Notes
 - Ensure each query's options (or default options) have `refetchOnRestart` and `refetchOnReconnect` set appropriately.
-- This implementation keeps the library dependency optional — your app is responsible for wiring lifecycle and connection events. The library exposes `refetchOnRestart()` and `refetchOnReconnect()` on `QueryClient.instance` so your app can call it from any listener.
+- This implementation keeps the library dependency optional — your app is responsible for wiring lifecycle and connection events. The library exposes `refetchOnRestart()` and `refetchOnReconnect()` on `queryClient` so your app can call it from any listener.
