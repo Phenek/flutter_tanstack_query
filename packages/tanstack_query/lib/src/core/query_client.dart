@@ -21,7 +21,8 @@ class QueryClient {
       QueryCache? queryCache,
       MutationCache? mutationCache})
       : queryCache = queryCache ?? QueryCache(config: QueryCacheConfig()),
-        mutationCache = mutationCache ?? MutationCache(config: MutationCacheConfig()) {
+        mutationCache =
+            mutationCache ?? MutationCache(config: MutationCacheConfig()) {
     instance = this;
   }
 

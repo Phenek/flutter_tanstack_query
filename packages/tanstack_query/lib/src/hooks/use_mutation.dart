@@ -32,7 +32,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 ///
 /// Returns:
 /// A [MutationResult<T, P>] to trigger and observe the mutation.
-MutationResult<T, P> useMutation<T, P> (
+MutationResult<T, P> useMutation<T, P>(
     {required Future<T> Function(P) mutationFn,
     void Function(T?)? onSuccess,
     void Function(Object?)? onError,
@@ -43,18 +43,19 @@ MutationResult<T, P> useMutation<T, P> (
   final queryClient = useQueryClient();
 
   // Create observer once per hook instance
-  final observer = useMemoized<MutationObserver<T, P>>(() => MutationObserver<T, P>(
-        queryClient,
-        MutationOptions<T, P>(
-          mutationFn: mutationFn,
-          onSuccess: onSuccess,
-          onError: onError,
-          onSettled: onSettle,
-          retry: retry,
-          retryDelay: retryDelay,
-          gcTime: gcTime,
-        ),
-      ));
+  final observer =
+      useMemoized<MutationObserver<T, P>>(() => MutationObserver<T, P>(
+            queryClient,
+            MutationOptions<T, P>(
+              mutationFn: mutationFn,
+              onSuccess: onSuccess,
+              onError: onError,
+              onSettled: onSettle,
+              retry: retry,
+              retryDelay: retryDelay,
+              gcTime: gcTime,
+            ),
+          ));
 
   // Keep observer options in sync when parameters change
   useEffect(() {
@@ -68,10 +69,20 @@ MutationResult<T, P> useMutation<T, P> (
       gcTime: gcTime,
     ));
     return null;
-  }, [observer, mutationFn, onSuccess, onError, onSettle, retry, retryDelay, gcTime]);
+  }, [
+    observer,
+    mutationFn,
+    onSuccess,
+    onError,
+    onSettle,
+    retry,
+    retryDelay,
+    gcTime
+  ]);
 
   // Local result state that mirrors the observer's current result
-  final resultState = useState<MutationObserverResult<T, P>>(observer.getCurrentResult());
+  final resultState =
+      useState<MutationObserverResult<T, P>>(observer.getCurrentResult());
 
   useEffect(() {
     // subscribe updates
@@ -99,8 +110,5 @@ MutationResult<T, P> useMutation<T, P> (
   }
 
   return MutationResult<T, P>(
-      mutate,
-      mutateAsync,
-      resetMutation,
-      () => resultState.value);
+      mutate, mutateAsync, resetMutation, () => resultState.value);
 }

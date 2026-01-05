@@ -25,7 +25,7 @@ class TodoCard extends HookWidget {
     final check = useState<bool>(todo.completed);
 
     useEffect(() {
-        check.value = todo.completed;
+      check.value = todo.completed;
       return null;
     }, [todo]);
 
@@ -34,8 +34,10 @@ class TodoCard extends HookWidget {
       mutationFn: (Todo body) => UpdateTodoApi.request(body),
       onSuccess: (deleted) {
         // Invalidate the todos query to refetch the updated list
-        queryClient.invalidateQueries(queryKey: ["Infinite", GetAllTodosApi.name]);
-        queryClient.invalidateQueries(queryKey: ["Classical", GetAllTodosApi.name]);
+        queryClient
+            .invalidateQueries(queryKey: ["Infinite", GetAllTodosApi.name]);
+        queryClient
+            .invalidateQueries(queryKey: ["Classical", GetAllTodosApi.name]);
       },
     );
 
@@ -43,8 +45,10 @@ class TodoCard extends HookWidget {
       mutationFn: (int id) => DeleteTodoApi.request(id),
       onSuccess: (deleted) {
         // Invalidate the todos query to refetch the updated list
-        queryClient.invalidateQueries(queryKey: ["Infinite", GetAllTodosApi.name]);
-        queryClient.invalidateQueries(queryKey: ["Classical", GetAllTodosApi.name]);
+        queryClient
+            .invalidateQueries(queryKey: ["Infinite", GetAllTodosApi.name]);
+        queryClient
+            .invalidateQueries(queryKey: ["Classical", GetAllTodosApi.name]);
       },
     );
 
@@ -69,15 +73,22 @@ class TodoCard extends HookWidget {
             context: context,
             builder: (ctx) => AlertDialog(
               title: const Text('Edit Todo'),
-              content: TextField(controller: editingController, decoration: const InputDecoration(labelText: 'Title')),
+              content: TextField(
+                  controller: editingController,
+                  decoration: const InputDecoration(labelText: 'Title')),
               actions: [
-                TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+                TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('Cancel')),
                 ElevatedButton(
                   onPressed: () {
                     final newTitle = editingController.text.trim();
                     if (newTitle.isEmpty) return;
                     // call edit mutation
-                    editMutation.mutate(Todo(id: todo.id, title: newTitle, completed: todo.completed));
+                    editMutation.mutate(Todo(
+                        id: todo.id,
+                        title: newTitle,
+                        completed: todo.completed));
                     Navigator.of(ctx).pop(true);
                   },
                   child: const Text('Save'),
@@ -96,8 +107,12 @@ class TodoCard extends HookWidget {
               title: const Text('Delete Todo'),
               content: const Text('Are you sure you want to delete this todo?'),
               actions: [
-                TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-                ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Delete')),
+                TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('Cancel')),
+                ElevatedButton(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: const Text('Delete')),
               ],
             ),
           );
@@ -113,7 +128,8 @@ class TodoCard extends HookWidget {
         return false;
       },
       background: Container(
-        decoration: BoxDecoration(color: Colors.blue[600], borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(
+            color: Colors.blue[600], borderRadius: BorderRadius.circular(12)),
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.only(left: 16),
         child: Row(mainAxisSize: MainAxisSize.min, children: const [
@@ -123,7 +139,8 @@ class TodoCard extends HookWidget {
         ]),
       ),
       secondaryBackground: Container(
-        decoration: BoxDecoration(color: Colors.red[600], borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(
+            color: Colors.red[600], borderRadius: BorderRadius.circular(12)),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 16),
         child: Row(mainAxisSize: MainAxisSize.min, children: const [
@@ -147,9 +164,12 @@ class TodoCard extends HookWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(todo.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                    Text(todo.title,
+                        style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 8),
-                    Text('ID: ${todo.id} • Completed: ${todo.completed ? 'Yes' : 'No'}',
+                    Text(
+                        'ID: ${todo.id} • Completed: ${todo.completed ? 'Yes' : 'No'}',
                         style: const TextStyle(color: Colors.black54)),
                   ],
                 ),

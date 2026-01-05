@@ -92,12 +92,17 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
 
     final enabled = _options.enabled ?? _client.defaultOptions.queries.enabled;
 
-    final isErrored = entry != null && entry.result is QueryResult && (entry.result as QueryResult).isError;
-    final retryOnMount = _options.retryOnMount ?? _client.defaultOptions.queries.retryOnMount;
+    final isErrored = entry != null &&
+        entry.result is QueryResult &&
+        (entry.result as QueryResult).isError;
+    final retryOnMount =
+        _options.retryOnMount ?? _client.defaultOptions.queries.retryOnMount;
 
     final shouldFetch = enabled &&
-        (entry == null || (isErrored && retryOnMount) ||
-            (DateTime.now().difference(entry.timestamp).inMilliseconds > (_options.staleTime ?? 0)));
+        (entry == null ||
+            (isErrored && retryOnMount) ||
+            (DateTime.now().difference(entry.timestamp).inMilliseconds >
+                (_options.staleTime ?? 0)));
 
     if (shouldFetch) {
       if (_options.debounceTime == null) {
@@ -138,10 +143,12 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
       retryer = Retryer<T?>(
         fn: () async => await _options.pageQueryFn(_options.initialPageParam),
         retry: _options.retry ?? _client.defaultOptions.queries.retry,
-        retryDelay: _options.retryDelay ?? _client.defaultOptions.queries.retryDelay,
+        retryDelay:
+            _options.retryDelay ?? _client.defaultOptions.queries.retryDelay,
         onFail: (failureCount, error) {
           // Debug: observe retry failures
-          debugPrint('DBG onFail initial fetch failureCount=$failureCount error=$error');
+          debugPrint(
+              'DBG onFail initial fetch failureCount=$failureCount error=$error');
           // Update cache to reflect failure while still retrying
           final failRes = InfiniteQueryResult<T>(
               key: cacheKey,
@@ -154,14 +161,16 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
             failRes.failureCount = failureCount;
             failRes.failureReason = error;
           } catch (_) {}
-          _client.queryCache[cacheKey] = QueryCacheEntry(failRes, DateTime.now(), queryFnRunning: tracked);
+          _client.queryCache[cacheKey] =
+              QueryCacheEntry(failRes, DateTime.now(), queryFnRunning: tracked);
           _currentResult = failRes;
           _notify();
         },
       );
 
       tracked = TrackedFuture<T?>(retryer.start());
-      _client.queryCache[cacheKey] = cacheEntry = QueryCacheEntry(queryResult, DateTime.now(), queryFnRunning: tracked);
+      _client.queryCache[cacheKey] = cacheEntry =
+          QueryCacheEntry(queryResult, DateTime.now(), queryFnRunning: tracked);
       shouldUpdateTheCache = true;
     }
 
@@ -187,12 +196,16 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
       queryResult.fetchNextPage = () => fetchNextPage();
 
       _currentResult = queryResult;
-      if (shouldUpdateTheCache) _client.queryCache[cacheKey] = QueryCacheEntry(queryResult, DateTime.now());
+      if (shouldUpdateTheCache) {
+        _client.queryCache[cacheKey] =
+            QueryCacheEntry(queryResult, DateTime.now());
+      }
       _client.queryCache.config.onSuccess?.call(value);
       _notify();
     } catch (e) {
       final failureCount = retryer?.failureCount ?? 0;
-      debugPrint('DBG final status=QueryStatus.error failureCount=$failureCount failureReason=$e');
+      debugPrint(
+          'DBG final status=QueryStatus.error failureCount=$failureCount failureReason=$e');
       final queryResult = InfiniteQueryResult<T>(
         key: cacheKey,
         status: QueryStatus.error,
@@ -210,14 +223,19 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
 
       // Preserve any previously observed failureCount if the new value is missing
       try {
-        if ((queryResult.failureCount == 0 || queryResult.failureReason == null) && _currentResult.failureCount > 0) {
+        if ((queryResult.failureCount == 0 ||
+                queryResult.failureReason == null) &&
+            _currentResult.failureCount > 0) {
           queryResult.failureCount = _currentResult.failureCount;
           queryResult.failureReason = _currentResult.failureReason ?? e;
         }
       } catch (_) {}
 
       _currentResult = queryResult;
-      if (shouldUpdateTheCache) _client.queryCache[cacheKey] = QueryCacheEntry(queryResult, DateTime.now());
+      if (shouldUpdateTheCache) {
+        _client.queryCache[cacheKey] =
+            QueryCacheEntry(queryResult, DateTime.now());
+      }
       _client.queryCache.config.onError?.call(e);
       _notify();
     }
@@ -226,7 +244,12 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
   void _setLoadingWithDebounce() {
     final cacheKey = queryKeyToCacheKey(_options.queryKey);
     _currentResult = InfiniteQueryResult<T>(
-        key: cacheKey, status: QueryStatus.pending, data: [], isFetching: true, error: null, isFetchingNextPage: false);
+        key: cacheKey,
+        status: QueryStatus.pending,
+        data: [],
+        isFetching: true,
+        error: null,
+        isFetchingNextPage: false);
     _notify();
 
     _timer?.cancel();
@@ -234,7 +257,8 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
   }
 
   void fetchNextPage() {
-    final hasData = _currentResult.data != null && _currentResult.data!.isNotEmpty;
+    final hasData =
+        _currentResult.data != null && _currentResult.data!.isNotEmpty;
     final nextPage = _options.getNextPageParam != null && hasData
         ? _options.getNextPageParam!(_currentResult.data!.last)
         : _currentPage;
@@ -244,7 +268,8 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
     _currentPage = nextPage;
     final cacheKey = queryKeyToCacheKey(_options.queryKey);
 
-    final queryLoadingMore = _currentResult.copyWith(isFetching: true, isFetchingNextPage: true);
+    final queryLoadingMore =
+        _currentResult.copyWith(isFetching: true, isFetchingNextPage: true);
     _currentResult = queryLoadingMore;
     _notify();
 
@@ -252,10 +277,13 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
     final retryer = Retryer<T?>(
       fn: () async => await _options.pageQueryFn(nextPage),
       retry: _options.retry ?? _client.defaultOptions.queries.retry,
-      retryDelay: _options.retryDelay ?? _client.defaultOptions.queries.retryDelay,
+      retryDelay:
+          _options.retryDelay ?? _client.defaultOptions.queries.retryDelay,
       onFail: (failureCount, error) {
-        debugPrint('DBG onFail next-page failureCount=$failureCount error=$error');
-        final failRes = _currentResult.copyWith(isFetching: true, isFetchingNextPage: true);
+        debugPrint(
+            'DBG onFail next-page failureCount=$failureCount error=$error');
+        final failRes =
+            _currentResult.copyWith(isFetching: true, isFetchingNextPage: true);
         try {
           failRes.failureCount = failureCount;
           failRes.failureReason = error;
@@ -285,12 +313,14 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
       queryResult.fetchNextPage = () => fetchNextPage();
 
       _currentResult = queryResult;
-      _client.queryCache[cacheKey] = QueryCacheEntry(queryResult, DateTime.now());
+      _client.queryCache[cacheKey] =
+          QueryCacheEntry(queryResult, DateTime.now());
       _client.queryCache.config.onSuccess?.call(value);
       _notify();
     }).catchError((e) {
       final failureCount = retryer.failureCount;
-      debugPrint('DBG next-page final status=QueryStatus.error failureCount=$failureCount failureReason=$e');
+      debugPrint(
+          'DBG next-page final status=QueryStatus.error failureCount=$failureCount failureReason=$e');
       final queryResult = InfiniteQueryResult<T>(
         key: cacheKey,
         status: QueryStatus.error,
@@ -305,13 +335,16 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
       } catch (_) {}
       queryResult.fetchNextPage = () => fetchNextPage();
       try {
-        if ((queryResult.failureCount == 0 || queryResult.failureReason == null) && _currentResult.failureCount > 0) {
+        if ((queryResult.failureCount == 0 ||
+                queryResult.failureReason == null) &&
+            _currentResult.failureCount > 0) {
           queryResult.failureCount = _currentResult.failureCount;
           queryResult.failureReason = _currentResult.failureReason ?? e;
         }
       } catch (_) {}
       _currentResult = queryResult;
-      _client.queryCache[cacheKey] = QueryCacheEntry(queryResult, DateTime.now());
+      _client.queryCache[cacheKey] =
+          QueryCacheEntry(queryResult, DateTime.now());
       _client.queryCache.config.onError?.call(e);
       _notify();
     });
@@ -341,7 +374,8 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
             error: null,
             isFetchingNextPage: false);
         _notify();
-      } else if (event.type == QueryCacheEventType.added || event.type == QueryCacheEventType.updated) {
+      } else if (event.type == QueryCacheEventType.added ||
+          event.type == QueryCacheEventType.updated) {
         final dynamic raw = event.entry?.result;
         if (raw is InfiniteQueryResult<T>) {
           final q = InfiniteQueryResult<T>(
@@ -362,9 +396,11 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
         }
       } else if (event.type == QueryCacheEventType.refetch ||
           (event.type == QueryCacheEventType.refetchOnRestart &&
-              (_options.refetchOnRestart ?? _client.defaultOptions.queries.refetchOnRestart)) ||
+              (_options.refetchOnRestart ??
+                  _client.defaultOptions.queries.refetchOnRestart)) ||
           (event.type == QueryCacheEventType.refetchOnReconnect &&
-              (_options.refetchOnReconnect ?? _client.defaultOptions.queries.refetchOnReconnect))) {
+              (_options.refetchOnReconnect ??
+                  _client.defaultOptions.queries.refetchOnReconnect))) {
         // re-fetch pages up to the current page
         refetchPagesUpToCurrent();
       }
@@ -409,7 +445,8 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
       );
       queryResult.fetchNextPage = () => fetchNextPage();
       _currentResult = queryResult;
-      _client.queryCache[queryKeyToCacheKey(_options.queryKey)] = QueryCacheEntry(queryResult, DateTime.now());
+      _client.queryCache[queryKeyToCacheKey(_options.queryKey)] =
+          QueryCacheEntry(queryResult, DateTime.now());
       _notify();
     } catch (e) {
       debugPrint("An error occurred while refetching pages up to current: $e");
@@ -430,7 +467,8 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
     // are garbage collected when there are no observers.
     try {
       final qOptions = QueryOptions<T>(
-        queryFn: () async => (await _options.pageQueryFn(_options.initialPageParam)) as T,
+        queryFn: () async =>
+            (await _options.pageQueryFn(_options.initialPageParam)) as T,
         queryKey: _options.queryKey,
         enabled: _options.enabled,
         gcTime: _options.gcTime,
@@ -444,7 +482,8 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
   void _notify() {
     // Debug: show what we notify observers with
     try {
-      debugPrint('DBG notify status=${_currentResult.status} failureCount=${_currentResult.failureCount}');
+      debugPrint(
+          'DBG notify status=${_currentResult.status} failureCount=${_currentResult.failureCount}');
     } catch (_) {}
 
     notifyAll((listener) {

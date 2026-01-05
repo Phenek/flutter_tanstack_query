@@ -11,10 +11,11 @@ typedef QueryObserverListener<T, E> = void Function(QueryResult<T>);
 /// A simplified `QueryObserver` that mirrors the behavior of the JS implementation
 /// insofar as it maintains a current result based on a Query, can be subscribed
 /// to by multiple listeners, and can trigger refetch.
-class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> {
+class QueryObserver<TQueryFnData, TError, TData>
+    extends Subscribable<Function> {
   final QueryClient _client;
   QueryOptions<TQueryFnData> options;
-  
+
   QueryResult<TData> _currentResult;
   QueryCacheEntry? _currentEntry;
   Query? _query;
@@ -52,7 +53,8 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
 
     // If queryKey changed or it transitioned from disabled->enabled, trigger a refetch
     if (prevKey != nextKey || (!prevEnabled && nextEnabled)) {
-      debugPrint('QueryObserver.setOptions: key changed from $prevKey -> $nextKey; triggering refetch');
+      debugPrint(
+          'QueryObserver.setOptions: key changed from $prevKey -> $nextKey; triggering refetch');
       refetch();
     }
   }
@@ -69,13 +71,17 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
 
     final enabled = options.enabled ?? true;
 
-    final isErrored = entry != null && entry.result is QueryResult && (entry.result as QueryResult).isError;
-    final retryOnMount = options.retryOnMount ?? _client.defaultOptions.queries.retryOnMount;
+    final isErrored = entry != null &&
+        entry.result is QueryResult &&
+        (entry.result as QueryResult).isError;
+    final retryOnMount =
+        options.retryOnMount ?? _client.defaultOptions.queries.retryOnMount;
 
     final shouldFetch = enabled &&
         (entry == null ||
             (isErrored && retryOnMount) ||
-            (DateTime.now().difference(entry.timestamp).inMilliseconds > (options.staleTime ?? 0)));
+            (DateTime.now().difference(entry.timestamp).inMilliseconds >
+                (options.staleTime ?? 0)));
 
     if (shouldFetch) {
       // Fire-and-forget the fetch
@@ -123,7 +129,8 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
   void _updateQuery() {
     final cacheKey = queryKeyToCacheKey(options.queryKey);
     // Use QueryCache.build to obtain a Query instance and subscribe to it
-    final q = _client.queryCache.build<TData>(_client, options as QueryOptions<TData>);
+    final q = _client.queryCache
+        .build<TData>(_client, options as QueryOptions<TData>);
 
     // If we had a previous query we should remove ourselves
     // (Query itself maintains no back-reference, observers subscribe directly)
@@ -150,8 +157,9 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
 
     if (res is QueryResult) {
       final cacheKey = queryKeyToCacheKey(options.queryKey);
-      final isStale =
-          entry == null || DateTime.now().difference(entry.timestamp).inMilliseconds > (options.staleTime ?? 0);
+      final isStale = entry == null ||
+          DateTime.now().difference(entry.timestamp).inMilliseconds >
+              (options.staleTime ?? 0);
 
       _currentResult = QueryResult<TData>(
         cacheKey,
@@ -183,9 +191,12 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
     try {
       if (event.type == QueryCacheEventType.removed) {
         final cacheKey = queryKeyToCacheKey(options.queryKey);
-        _currentResult = QueryResult<TData>(cacheKey, QueryStatus.pending, null, null, isFetching: false);
+        _currentResult = QueryResult<TData>(
+            cacheKey, QueryStatus.pending, null, null,
+            isFetching: false);
         _notify();
-      } else if (event.type == QueryCacheEventType.added || event.type == QueryCacheEventType.updated) {
+      } else if (event.type == QueryCacheEventType.added ||
+          event.type == QueryCacheEventType.updated) {
         final dynamic raw = event.entry?.result;
         if (raw is QueryResult) {
           _currentEntry = event.entry;
@@ -194,9 +205,11 @@ class QueryObserver<TQueryFnData, TError, TData> extends Subscribable<Function> 
         }
       } else if (event.type == QueryCacheEventType.refetch ||
           (event.type == QueryCacheEventType.refetchOnRestart &&
-              (options.refetchOnRestart ?? _client.defaultOptions.queries.refetchOnRestart)) ||
+              (options.refetchOnRestart ??
+                  _client.defaultOptions.queries.refetchOnRestart)) ||
           (event.type == QueryCacheEventType.refetchOnReconnect &&
-              (options.refetchOnReconnect ?? _client.defaultOptions.queries.refetchOnReconnect))) {
+              (options.refetchOnReconnect ??
+                  _client.defaultOptions.queries.refetchOnReconnect))) {
         // Trigger a refetch according to the cache event and options
         refetch();
       }

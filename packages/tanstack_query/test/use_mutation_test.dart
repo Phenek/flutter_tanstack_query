@@ -10,12 +10,15 @@ void main() {
     // Ensure a fresh QueryClient instance between tests
     // Disable default GC in tests to avoid scheduling timers unless a test
     // explicitly sets `gcTime` on the query options.
-    client = QueryClient(defaultOptions: const DefaultOptions(queries: QueryDefaultOptions(gcTime: 0)));
+    client = QueryClient(
+        defaultOptions:
+            const DefaultOptions(queries: QueryDefaultOptions(gcTime: 0)));
     client.mutationCache.clear();
   });
 
 // (setUp is declared above)
-  testWidgets('should mutate and succeed when mutate is called', (WidgetTester tester) async {
+  testWidgets('should mutate and succeed when mutate is called',
+      (WidgetTester tester) async {
     String? successData;
     final holder = ValueNotifier<MutationResult<String, String>?>(null);
 
@@ -57,7 +60,8 @@ void main() {
     expect(successData, equals('ok'));
   });
 
-  testWidgets('should mutate and fail when mutate is called', (WidgetTester tester) async {
+  testWidgets('should mutate and fail when mutate is called',
+      (WidgetTester tester) async {
     Object? errorObj;
     final holder = ValueNotifier<MutationResult<String, String>?>(null);
 
@@ -99,7 +103,8 @@ void main() {
     expect(errorObj, isNotNull);
   });
 
-  testWidgets('should garbage collect mutation after gcTime when unmounted', (WidgetTester tester) async {
+  testWidgets('should garbage collect mutation after gcTime when unmounted',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<MutationResult<String, String>?>(null);
 
     await tester.pumpWidget(QueryClientProvider(
@@ -142,28 +147,31 @@ void main() {
     expect(client.mutationCache.getAll().isEmpty, isTrue);
   });
 
-  testWidgets('should retry failed mutation according to retry settings', (WidgetTester tester) async {
+  testWidgets('should retry failed mutation according to retry settings',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<MutationResult<String, int>?>(null);
     var attempts = 0;
 
-    await tester.pumpWidget(QueryClientProvider(client: client, child: MaterialApp(
-      home: HookBuilder(builder: (context) {
-        final mutation = useMutation<String, int>(
-          mutationFn: (i) async {
-            attempts++;
-            await Future.delayed(Duration(milliseconds: 5));
-            if (attempts < 3) throw Exception('try-$attempts');
-            return 'finally';
-          },
-          retry: 3,
-          retryDelay: 5,
-        );
+    await tester.pumpWidget(QueryClientProvider(
+        client: client,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final mutation = useMutation<String, int>(
+              mutationFn: (i) async {
+                attempts++;
+                await Future.delayed(Duration(milliseconds: 5));
+                if (attempts < 3) throw Exception('try-$attempts');
+                return 'finally';
+              },
+              retry: 3,
+              retryDelay: 5,
+            );
 
-        holder.value = mutation;
+            holder.value = mutation;
 
-        return Container();
-      }),
-    )));
+            return Container();
+          }),
+        )));
 
     await tester.runAsync(() async {
       await holder.value!.mutateAsync(1);
@@ -174,25 +182,28 @@ void main() {
     expect(holder.value!.data, equals('finally'));
   });
 
-  testWidgets('should expose failureCount and failureReason on final error', (WidgetTester tester) async {
+  testWidgets('should expose failureCount and failureReason on final error',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<MutationResult<String, int>?>(null);
 
-    await tester.pumpWidget(QueryClientProvider(client: client, child: MaterialApp(
-      home: HookBuilder(builder: (context) {
-        final mutation = useMutation<String, int>(
-          mutationFn: (i) async {
-            await Future.delayed(Duration(milliseconds: 5));
-            throw Exception('boom');
-          },
-          retry: 2,
-          retryDelay: 5,
-        );
+    await tester.pumpWidget(QueryClientProvider(
+        client: client,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final mutation = useMutation<String, int>(
+              mutationFn: (i) async {
+                await Future.delayed(Duration(milliseconds: 5));
+                throw Exception('boom');
+              },
+              retry: 2,
+              retryDelay: 5,
+            );
 
-        holder.value = mutation;
+            holder.value = mutation;
 
-        return Container();
-      }),
-    )));
+            return Container();
+          }),
+        )));
 
     await tester.runAsync(() async {
       try {
@@ -205,4 +216,3 @@ void main() {
     expect(holder.value!.failureReason, isNotNull);
   });
 }
-

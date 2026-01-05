@@ -85,7 +85,8 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
 
   // Create the observer once for this cache key and keep it in sync via setOptions
   final observer = useMemoized<InfiniteQueryObserver<T>>(
-      () => InfiniteQueryObserver<T>(queryClient, options), [queryClient, cacheKey]);
+      () => InfiniteQueryObserver<T>(queryClient, options),
+      [queryClient, cacheKey]);
 
   useEffect(() {
     // Keep observer options in sync
@@ -100,13 +101,15 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
     final unsubscribe = observer.subscribe((InfiniteQueryResult<T> res) {
       try {
         state.value = res;
-        print('useInfiniteQuery - status ${state.value.status} value: ${state.value}');
+        print(
+            'useInfiniteQuery - status ${state.value.status} value: ${state.value}');
       } catch (_) {}
     });
 
     return () {
       unsubscribe();
-      print('dispose useInfiniteQuery - status ${state.value.status} value: ${state.value}');
+      print(
+          'dispose useInfiniteQuery - status ${state.value.status} value: ${state.value}');
     };
   }, [observer, cacheKey]);
 
@@ -124,7 +127,8 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
 ///
 /// Note: This operation clears existing data and places the query into a
 /// pending state.
-void resetValues<T>(ObjectRef<int> currentPage, int initialPageParam, ValueNotifier<InfiniteQueryResult<T>> result,
+void resetValues<T>(ObjectRef<int> currentPage, int initialPageParam,
+    ValueNotifier<InfiniteQueryResult<T>> result,
     {bool isLoading = false}) {
   currentPage.value = initialPageParam;
   result.value.status = QueryStatus.pending;

@@ -38,7 +38,8 @@ class MutationObserverResult<T, P> {
 }
 
 /// Listener type for mutation observers.
-typedef MutationObserverListener<T, P> = void Function(MutationObserverResult<T, P>);
+typedef MutationObserverListener<T, P> = void Function(
+    MutationObserverResult<T, P>);
 
 /// Observer that mirrors the JS `MutationObserver`. It can be subscribed to by
 /// multiple listeners and will reflect the state of the underlying active
@@ -63,7 +64,9 @@ class MutationObserver<T, P> extends Subscribable<Function> {
     final prev = this.options;
     this.options = options;
     // If mutation key changed, reset the current mutation.
-    if (prev.mutationKey != null && options.mutationKey != null && prev.mutationKey != options.mutationKey) {
+    if (prev.mutationKey != null &&
+        options.mutationKey != null &&
+        prev.mutationKey != options.mutationKey) {
       reset();
     } else if (_currentMutation?.state.isPending ?? false) {
       _currentMutation?.setOptions(options);
@@ -128,7 +131,8 @@ class MutationObserver<T, P> extends Subscribable<Function> {
   }
 
   void _updateResult() {
-    final state = _currentMutation?.state ?? MutationState<T>(null, MutationStatus.idle, null);
+    final state = _currentMutation?.state ??
+        MutationState<T>(null, MutationStatus.idle, null);
 
     _currentResult = MutationObserverResult<T, P>(
       data: state.data,

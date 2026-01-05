@@ -12,9 +12,12 @@ class MutationAction<T> {
 
   MutationAction._(this.type, {this.data, this.error});
 
-  factory MutationAction.pending() => MutationAction._(MutationActionType.pending);
-  factory MutationAction.success(T data) => MutationAction._(MutationActionType.success, data: data);
-  factory MutationAction.error(Object error) => MutationAction._(MutationActionType.error, error: error);
+  factory MutationAction.pending() =>
+      MutationAction._(MutationActionType.pending);
+  factory MutationAction.success(T data) =>
+      MutationAction._(MutationActionType.success, data: data);
+  factory MutationAction.error(Object error) =>
+      MutationAction._(MutationActionType.error, error: error);
 }
 
 /// Per-mutation call options passed to `mutate`.
@@ -69,7 +72,8 @@ class Mutation<T, P> extends Removable {
 
   Mutation(this.client, this.options) {
     // Initialize gc timing and schedule initial GC
-    updateGcTime(options.gcTime, defaultGcTime: client.defaultOptions.mutations.gcTime);
+    updateGcTime(options.gcTime,
+        defaultGcTime: client.defaultOptions.mutations.gcTime);
     scheduleGc();
   }
 
@@ -122,12 +126,14 @@ class Mutation<T, P> extends Removable {
     } catch (_) {}
 
     // Reset failure tracking when starting
-    state = MutationState<T>(null, MutationStatus.pending, null, failureCount: 0, failureReason: null);
+    state = MutationState<T>(null, MutationStatus.pending, null,
+        failureCount: 0, failureReason: null);
     _notifyObservers(MutationAction.pending());
 
     // Build retryer
     final retryValue = options.retry ?? client.defaultOptions.mutations.retry;
-    final retryDelayValue = options.retryDelay ?? client.defaultOptions.mutations.retryDelay;
+    final retryDelayValue =
+        options.retryDelay ?? client.defaultOptions.mutations.retryDelay;
 
     // debug logs removed
 
@@ -137,7 +143,8 @@ class Mutation<T, P> extends Removable {
       retryDelay: retryDelayValue,
       onFail: (failureCount, error) {
         // Update state while retrying so observers can read failureCount / reason
-        state = MutationState<T>(null, MutationStatus.pending, null, failureCount: failureCount, failureReason: error);
+        state = MutationState<T>(null, MutationStatus.pending, null,
+            failureCount: failureCount, failureReason: error);
         _notifyObservers(MutationAction.pending());
       },
     );
@@ -145,7 +152,8 @@ class Mutation<T, P> extends Removable {
     try {
       final data = await retryer.start();
 
-      state = MutationState<T>(data, MutationStatus.success, null, failureCount: 0, failureReason: null);
+      state = MutationState<T>(data, MutationStatus.success, null,
+          failureCount: 0, failureReason: null);
       _notifyObservers(MutationAction.success(data));
 
       // Per-mutation hooks
@@ -162,7 +170,8 @@ class Mutation<T, P> extends Removable {
     } catch (e) {
       // final failure
       final failureCount = retryer.failureCount;
-      state = MutationState<T>(null, MutationStatus.error, e, failureCount: failureCount, failureReason: e);
+      state = MutationState<T>(null, MutationStatus.error, e,
+          failureCount: failureCount, failureReason: e);
       _notifyObservers(MutationAction.error(e));
 
       try {
@@ -180,7 +189,8 @@ class Mutation<T, P> extends Removable {
   void setOptions(MutationOptions<T, P> newOptions) {
     options = newOptions;
     // Re-evaluate GC timing when options change
-    updateGcTime(options.gcTime, defaultGcTime: client.defaultOptions.mutations.gcTime);
+    updateGcTime(options.gcTime,
+        defaultGcTime: client.defaultOptions.mutations.gcTime);
     scheduleGc();
   }
 }

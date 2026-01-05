@@ -11,13 +11,14 @@ class MutationCacheConfig {
   /// Called when a mutation succeeds with the returned data.
   final dynamic Function(dynamic data)? onSuccess;
 
-    /// Called when a query settles (either success or error).
+  /// Called when a query settles (either success or error).
   final void Function(dynamic data, dynamic error)? onSettled;
 
   /// Called just before a mutation is executed (useful for optimistic updates).
   final dynamic Function()? onMutate;
 
-  MutationCacheConfig({this.onError, this.onSuccess, this.onMutate, this.onSettled});
+  MutationCacheConfig(
+      {this.onError, this.onSuccess, this.onMutate, this.onSettled});
 }
 
 /// Types of events emitted by the cache.
@@ -55,7 +56,8 @@ class MutationCache extends Subscribable<MutationCacheListener> {
   /// Add a mutation to the cache and notify subscribers.
   void add(dynamic mutation) {
     _mutations.add(mutation);
-    _notifySubscribers(MutationCacheNotifyEvent(NotifyEventType.added, mutation));
+    _notifySubscribers(
+        MutationCacheNotifyEvent(NotifyEventType.added, mutation));
   }
 
   /// Remove a mutation from the cache and notify subscribers.
@@ -66,12 +68,14 @@ class MutationCache extends Subscribable<MutationCacheListener> {
     } catch (_) {}
 
     _mutations.remove(mutation);
-    _notifySubscribers(MutationCacheNotifyEvent(NotifyEventType.removed, mutation));
+    _notifySubscribers(
+        MutationCacheNotifyEvent(NotifyEventType.removed, mutation));
   }
 
   /// Build a new [Mutation] and add it to the cache. The mutation will be
   /// owned by the cache and can notify observers.
-  Mutation<T, P> build<T, P>(QueryClient client, MutationOptions<T, P> options) {
+  Mutation<T, P> build<T, P>(
+      QueryClient client, MutationOptions<T, P> options) {
     final m = Mutation<T, P>(client, options);
     add(m);
     return m;

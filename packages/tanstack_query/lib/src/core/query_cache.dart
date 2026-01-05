@@ -42,7 +42,8 @@ class QueryCacheNotifyEvent {
   QueryCacheNotifyEvent(this.type, this.cacheKey, this.entry, {this.callerId});
 
   @override
-  String toString() => 'QueryCacheNotifyEvent(type: $type, cacheKey: $cacheKey, entry: $entry, callerId: $callerId)';
+  String toString() =>
+      'QueryCacheNotifyEvent(type: $type, cacheKey: $cacheKey, entry: $entry, callerId: $callerId)';
 }
 
 /// A cache entry storing the last query [result], a [timestamp] and optionally
@@ -54,14 +55,16 @@ class QueryCacheNotifyEvent {
 /// - `queryFnRunning`: If non-null, a `TrackedFuture` representing an in-flight
 ///   fetch for this key.
 class QueryCacheEntry<T> {
-  final dynamic result; // can be QueryResult/InfiniteQueryResult from flutter layer
+  final dynamic
+      result; // can be QueryResult/InfiniteQueryResult from flutter layer
   final DateTime timestamp;
   TrackedFuture<T>? queryFnRunning;
 
   QueryCacheEntry(this.result, this.timestamp, {this.queryFnRunning});
 
   @override
-  String toString() => 'QueryCacheEntry(result: $result, timestamp: $timestamp, running: $queryFnRunning)';
+  String toString() =>
+      'QueryCacheEntry(result: $result, timestamp: $timestamp, running: $queryFnRunning)';
 }
 
 /// Query cache that stores cache entries and provides utilities to
@@ -91,14 +94,20 @@ class QueryCache extends Subscribable<QueryCacheListener> {
   void set(String key, QueryCacheEntry value, {String? callerId}) {
     final existed = _cache.containsKey(key);
     _cache[key] = value;
-    _notifyListeners(QueryCacheNotifyEvent(existed ? QueryCacheEventType.updated : QueryCacheEventType.added, key, value, callerId: callerId));
+    _notifyListeners(QueryCacheNotifyEvent(
+        existed ? QueryCacheEventType.updated : QueryCacheEventType.added,
+        key,
+        value,
+        callerId: callerId));
   }
 
   /// Remove a cache entry by key and notify listeners if something was removed.
   QueryCacheEntry? remove(String key, {String? callerId}) {
     final removed = _cache.remove(key);
     if (removed != null) {
-      _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.removed, key, removed, callerId: callerId));
+      _notifyListeners(QueryCacheNotifyEvent(
+          QueryCacheEventType.removed, key, removed,
+          callerId: callerId));
     }
     // Also remove any built Query instance
     if (_queries.containsKey(key)) {
@@ -126,7 +135,8 @@ class QueryCache extends Subscribable<QueryCacheListener> {
           if (q != null && q is Query) q.cancel();
         } catch (_) {}
       }
-      _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.removed, entry.key, entry.value));
+      _notifyListeners(QueryCacheNotifyEvent(
+          QueryCacheEventType.removed, entry.key, entry.value));
     }
   }
 
@@ -138,36 +148,46 @@ class QueryCache extends Subscribable<QueryCacheListener> {
   void refetch(List<Object> queryKey, {String? callerId}) {
     final cacheKey = queryKeyToCacheKey(queryKey);
     for (var k in _cache.keys.where((k) => k.startsWith(cacheKey))) {
-      _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.refetch, k, _cache[k], callerId: callerId));
+      _notifyListeners(QueryCacheNotifyEvent(
+          QueryCacheEventType.refetch, k, _cache[k],
+          callerId: callerId));
     }
   }
 
   /// Request a refetch for a specific cache key.
   void refetchByCacheKey(String cacheKey, {String? callerId}) {
-    _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.refetch, cacheKey, _cache[cacheKey], callerId: callerId));
+    _notifyListeners(QueryCacheNotifyEvent(
+        QueryCacheEventType.refetch, cacheKey, _cache[cacheKey],
+        callerId: callerId));
   }
 
   /// Trigger refetch events for all cache entries; typically used on restart.
   void refetchOnRestart() {
     for (var k in _cache.keys) {
-      _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.refetchOnRestart, k, _cache[k]));
+      _notifyListeners(QueryCacheNotifyEvent(
+          QueryCacheEventType.refetchOnRestart, k, _cache[k]));
     }
   }
 
   /// Trigger refetch events for all cache entries when the connection is re-established.
   void refetchOnReconnect() {
     for (var k in _cache.keys) {
-      _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.refetchOnReconnect, k, _cache[k]));
+      _notifyListeners(QueryCacheNotifyEvent(
+          QueryCacheEventType.refetchOnReconnect, k, _cache[k]));
     }
   }
 
   /// Find a single entry by exact query key.
-  QueryCacheEntry? find(List<Object> queryKey) => _cache[queryKeyToCacheKey(queryKey)];
+  QueryCacheEntry? find(List<Object> queryKey) =>
+      _cache[queryKeyToCacheKey(queryKey)];
 
   /// Find all entries whose cache keys start with the serialized [queryKey].
   List<QueryCacheEntry> findAll(List<Object> queryKey) {
     final cacheKey = queryKeyToCacheKey(queryKey);
-    return _cache.entries.where((e) => e.key.startsWith(cacheKey)).map((e) => e.value).toList();
+    return _cache.entries
+        .where((e) => e.key.startsWith(cacheKey))
+        .map((e) => e.value)
+        .toList();
   }
 
   /// Clear all entries and notify listeners for each removal and a final `clear` event.
@@ -185,10 +205,11 @@ class QueryCache extends Subscribable<QueryCacheListener> {
     _queries.clear();
 
     for (var k in keys) {
-      _notifyListeners(QueryCacheNotifyEvent(QueryCacheEventType.removed, k, null, callerId: callerId));
+      _notifyListeners(QueryCacheNotifyEvent(
+          QueryCacheEventType.removed, k, null,
+          callerId: callerId));
     }
   }
-
 
   void _notifyListeners(QueryCacheNotifyEvent event) {
     // Delegate to Subscribable to iterate and safely call listeners.

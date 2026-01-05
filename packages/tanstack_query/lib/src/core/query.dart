@@ -13,9 +13,11 @@ class Query<T> extends Removable {
   /// Active retryer
   Retryer<T>? _retryer;
 
-  Query(this.client, this.options) : cacheKey = queryKeyToCacheKey(options.queryKey) {
+  Query(this.client, this.options)
+      : cacheKey = queryKeyToCacheKey(options.queryKey) {
     // Initialize GC timing using options + client defaults
-    updateGcTime(options.gcTime, defaultGcTime: client.defaultOptions.queries.gcTime);
+    updateGcTime(options.gcTime,
+        defaultGcTime: client.defaultOptions.queries.gcTime);
   }
 
   void addObserver(dynamic observer) {
@@ -31,7 +33,8 @@ class Query<T> extends Removable {
     }
   }
 
-  QueryCacheEntry<T>? get entry => client.queryCache[cacheKey] as QueryCacheEntry<T>?;
+  QueryCacheEntry<T>? get entry =>
+      client.queryCache[cacheKey] as QueryCacheEntry<T>?;
 
   QueryResult<T>? get result => entry?.result as QueryResult<T>?;
 
@@ -64,12 +67,16 @@ class Query<T> extends Removable {
     _retryer = Retryer<T>(
       fn: fn,
       retry: options.retry ?? client.defaultOptions.queries.retry,
-      retryDelay: options.retryDelay ?? client.defaultOptions.queries.retryDelay,
+      retryDelay:
+          options.retryDelay ?? client.defaultOptions.queries.retryDelay,
       onFail: (failureCount, error) {
         // Update cache to reflect the failure count/reason while still retrying
-        final failRes = QueryResult<T>(cacheKey, QueryStatus.pending, null, error,
+        final failRes = QueryResult<T>(
+            cacheKey, QueryStatus.pending, null, error,
             isFetching: true, failureCount: failureCount, failureReason: error);
-        client.queryCache[cacheKey] = QueryCacheEntry<T>(failRes, DateTime.now(), queryFnRunning: running);
+        client.queryCache[cacheKey] = QueryCacheEntry<T>(
+            failRes, DateTime.now(),
+            queryFnRunning: running);
         _notifyObservers();
       },
     );
@@ -79,14 +86,17 @@ class Query<T> extends Removable {
         isFetching: true, failureCount: 0, failureReason: null);
     // Wrap retryer.start() in a TrackedFuture so other code can inspect queryFnRunning
     running = TrackedFuture<T>(_retryer!.start());
-    client.queryCache[cacheKey] = QueryCacheEntry<T>(pending, DateTime.now(), queryFnRunning: running);
+    client.queryCache[cacheKey] =
+        QueryCacheEntry<T>(pending, DateTime.now(), queryFnRunning: running);
     _notifyObservers();
 
     try {
       final value = await running;
-      final queryResult = QueryResult<T>(cacheKey, QueryStatus.success, value, null,
+      final queryResult = QueryResult<T>(
+          cacheKey, QueryStatus.success, value, null,
           isFetching: false, failureCount: 0, failureReason: null);
-      client.queryCache[cacheKey] = QueryCacheEntry<T>(queryResult, DateTime.now());
+      client.queryCache[cacheKey] =
+          QueryCacheEntry<T>(queryResult, DateTime.now());
       client.queryCache.config.onSuccess?.call(value);
       _notifyObservers();
       // Clear the retryer reference since the fetch has settled
@@ -96,7 +106,8 @@ class Query<T> extends Removable {
       final failureCount = _retryer?.failureCount ?? 0;
       final errorRes = QueryResult<T>(cacheKey, QueryStatus.error, null, e,
           isFetching: false, failureCount: failureCount, failureReason: e);
-      client.queryCache[cacheKey] = QueryCacheEntry<T>(errorRes, DateTime.now());
+      client.queryCache[cacheKey] =
+          QueryCacheEntry<T>(errorRes, DateTime.now());
       client.queryCache.config.onError?.call(e);
       _notifyObservers();
       // Clear the retryer reference since the fetch has settled

@@ -58,13 +58,26 @@ QueryResult<T> useQuery<T>(
             retryOnMount: retryOnMount,
             retryDelay: retryDelay,
           ),
-      [queryClient, queryFn, staleTime, enabled, refetchOnRestart, refetchOnReconnect, gcTime, retry, retryOnMount, retryDelay, cacheKey]);
+      [
+        queryClient,
+        queryFn,
+        staleTime,
+        enabled,
+        refetchOnRestart,
+        refetchOnReconnect,
+        gcTime,
+        retry,
+        retryOnMount,
+        retryDelay,
+        cacheKey
+      ]);
 
   // Observer follows the same pattern as useInfiniteQuery: create once and
   // keep it in sync via setOptions to avoid complex lifecycle code in the hook.
   // Create the observer once for this cache key and keep it in sync via setOptions
   final observer = useMemoized<QueryObserver<T, Object?, T>>(
-      () => QueryObserver<T, Object?, T>(queryClient, options), [queryClient, cacheKey]);
+      () => QueryObserver<T, Object?, T>(queryClient, options),
+      [queryClient, cacheKey]);
 
   // Keep observer options in sync when any option changes
   useEffect(() {
@@ -90,7 +103,8 @@ QueryResult<T> useQuery<T>(
 
     return () {
       unsubscribe();
-      print('dispose useQuery - status ${state.value.status} value: ${state.value}');
+      print(
+          'dispose useQuery - status ${state.value.status} value: ${state.value}');
     };
   }, [observer, cacheKey]);
 

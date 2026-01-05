@@ -17,7 +17,8 @@ class MutationState<T> {
   /// The last failure reason (if any).
   final Object? failureReason;
 
-  MutationState(this.data, this.status, this.error, {this.failureCount = 0, this.failureReason});
+  MutationState(this.data, this.status, this.error,
+      {this.failureCount = 0, this.failureReason});
 
   /// Whether the mutation is currently idle.
   bool get isIdle => status == MutationStatus.idle;

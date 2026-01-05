@@ -29,7 +29,8 @@ class MutationDefaultOptions {
   final dynamic retry;
   final dynamic retryDelay;
 
-  const MutationDefaultOptions({this.gcTime = 0, this.retry = 0, this.retryDelay = 1000});
+  const MutationDefaultOptions(
+      {this.gcTime = 0, this.retry = 0, this.retryDelay = 1000});
 }
 
 /// Container for default query and mutation options.

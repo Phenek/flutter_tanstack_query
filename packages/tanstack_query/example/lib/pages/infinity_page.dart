@@ -17,15 +17,18 @@ class InfinityPage extends HookWidget {
 
     final infiniteTodos = useInfiniteQuery<PaginatedTodos>(
       queryKey: ["Infinite", GetAllTodosApi.name, page.value.size],
-      queryFn: (int pageParam) => GetAllTodosApi.request(Pagination(number: pageParam, size: page.value.size)),
+      queryFn: (int pageParam) => GetAllTodosApi.request(
+          Pagination(number: pageParam, size: page.value.size)),
       initialPageParam: page.value.number,
-      getNextPageParam: (last) => (last.page < last.totalPages) ? last.page + 1 : 0,
+      getNextPageParam: (last) =>
+          (last.page < last.totalPages) ? last.page + 1 : 0,
     );
 
     scrollController.addListener(() {
       if (!scrollController.hasClients) return;
 
-      if (scrollController.position.pixels >= scrollController.position.maxScrollExtent - 200) {
+      if (scrollController.position.pixels >=
+          scrollController.position.maxScrollExtent - 200) {
         if (infiniteTodos.fetchNextPage != null) {
           infiniteTodos.fetchNextPage!();
         }
@@ -33,7 +36,8 @@ class InfinityPage extends HookWidget {
     });
 
     if (scrollController.hasClients &&
-        scrollController.position.maxScrollExtent == scrollController.position.minScrollExtent &&
+        scrollController.position.maxScrollExtent ==
+            scrollController.position.minScrollExtent &&
         infiniteTodos.data != null &&
         infiniteTodos.data!.isNotEmpty &&
         infiniteTodos.fetchNextPage != null) {
@@ -55,12 +59,14 @@ class InfinityPage extends HookWidget {
       );
     }
     // error
-    else if (infiniteTodos.isError || infiniteTodos.status == QueryStatus.error) {
+    else if (infiniteTodos.isError ||
+        infiniteTodos.status == QueryStatus.error) {
       final err = infiniteTodos.error;
       content = Center(child: Text('Error: ${err ?? 'unknown'}'));
     }
 
-    final items = infiniteTodos.data?.expand((p) => p.items).toList() ?? <Todo>[];
+    final items =
+        infiniteTodos.data?.expand((p) => p.items).toList() ?? <Todo>[];
 
     return Stack(children: [
       Column(children: [
@@ -68,7 +74,8 @@ class InfinityPage extends HookWidget {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Infinite List', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+            Text('Infinite List',
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Text(
               "Displayed pages: ${infiniteTodos.data?.isNotEmpty == true ? infiniteTodos.data!.last.page : 1}",
@@ -87,13 +94,13 @@ class InfinityPage extends HookWidget {
               if (infiniteTodos.isFetching) {
                 return const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Center(
+                  child: Center(
                     child: SizedBox(
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(),
                     ),
-                    ),
+                  ),
                 );
               } else {
                 return const SizedBox.shrink();

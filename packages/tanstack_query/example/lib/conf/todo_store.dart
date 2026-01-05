@@ -43,8 +43,7 @@ class TodoStore {
     final start = (pagination.number - 1) * pagination.size;
     if (start >= _todos.length) return <Todo>[];
     final end = (start + pagination.size).clamp(0, _todos.length);
-    final todos = List<Todo>.from(_todos)
-      ..sort((a, b) => b.id.compareTo(a.id));
+    final todos = List<Todo>.from(_todos)..sort((a, b) => b.id.compareTo(a.id));
     return todos.sublist(start, end);
   }
 

@@ -22,7 +22,8 @@ class Retryer<T> {
   Timer? _timer;
   int _failureCount = 0;
 
-  Retryer({required this.fn, this.retry = 0, this.retryDelay = 1000, this.onFail});
+  Retryer(
+      {required this.fn, this.retry = 0, this.retryDelay = 1000, this.onFail});
 
   String status() => _status;
 

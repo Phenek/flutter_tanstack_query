@@ -11,7 +11,9 @@ void main() {
     // Use a small gcTime during tests to avoid scheduling long-lived timers
     // Disable default GC in tests to avoid scheduling timers unless a test
     // explicitly sets `gcTime` on the query options.
-    queryClient = QueryClient(defaultOptions: const DefaultOptions(queries: QueryDefaultOptions(gcTime: 0)));
+    queryClient = QueryClient(
+        defaultOptions:
+            const DefaultOptions(queries: QueryDefaultOptions(gcTime: 0)));
     queryClient.queryCache.clear();
   });
 
@@ -51,7 +53,8 @@ void main() {
 
     // The cache should also contain the successful result
     final key = queryKeyToCacheKey(['fetch-success']);
-    expect((queryClient.queryCache[key]!.result as QueryResult<String>).data, equals('ok'));
+    expect((queryClient.queryCache[key]!.result as QueryResult<String>).data,
+        equals('ok'));
   });
 
   testWidgets('should fetch and fail', (WidgetTester tester) async {
@@ -81,7 +84,9 @@ void main() {
 
     // wait for the hook to update to error status (with a small timeout)
     var tries = 0;
-    while ((holder.value == null || holder.value!.status == QueryStatus.pending) && tries < 50) {
+    while (
+        (holder.value == null || holder.value!.status == QueryStatus.pending) &&
+            tries < 50) {
       await tester.pump(Duration(milliseconds: 10));
       tries++;
     }
@@ -97,7 +102,8 @@ void main() {
     // cache should contain the failing result as well (if the hook updated the cache)
     final cacheKey = queryKeyToCacheKey(['fetch-fail']);
     if (queryClient.queryCache.containsKey(cacheKey)) {
-      final cached = queryClient.queryCache[cacheKey]!.result as QueryResult<String>;
+      final cached =
+          queryClient.queryCache[cacheKey]!.result as QueryResult<String>;
       expect(cached.status, equals(QueryStatus.error));
       expect(cached.error.toString(), contains('boom'));
       expect(cached.failureCount, greaterThanOrEqualTo(1));
@@ -105,7 +111,8 @@ void main() {
     }
   });
 
-  testWidgets('should retry up to retry count and succeed', (WidgetTester tester) async {
+  testWidgets('should retry up to retry count and succeed',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<QueryResult<String>?>(null);
     var attempts = 0;
 
@@ -140,7 +147,8 @@ void main() {
     expect(holder.value!.data, equals('finally'));
   });
 
-  testWidgets('should not retry on mount if retryOnMount is false', (WidgetTester tester) async {
+  testWidgets('should not retry on mount if retryOnMount is false',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<QueryResult<String>?>(null);
     var called = false;
     final keyList = ['no-retry-on-mount'];
@@ -148,7 +156,8 @@ void main() {
 
     // place an errored entry in cache
     queryClient.queryCache[cacheKey] = QueryCacheEntry(
-        QueryResult<String>(cacheKey, QueryStatus.error, null, Exception('old-error'),
+        QueryResult<String>(
+            cacheKey, QueryStatus.error, null, Exception('old-error'),
             failureCount: 1, failureReason: Exception('old-error')),
         DateTime.now());
 
@@ -178,7 +187,8 @@ void main() {
     expect(called, isFalse);
   });
 
-  testWidgets('should not fetch when enabled is false', (WidgetTester tester) async {
+  testWidgets('should not fetch when enabled is false',
+      (WidgetTester tester) async {
     var called = false;
 
     await tester.pumpWidget(QueryClientProvider(
@@ -204,7 +214,8 @@ void main() {
     expect(called, isFalse);
   });
 
-  testWidgets('should fetch when enabled is changed from false to true', (WidgetTester tester) async {
+  testWidgets('should fetch when enabled is changed from false to true',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<QueryResult<String>?>(null);
     var called = 0;
 
@@ -265,7 +276,8 @@ void main() {
     final holder = ValueNotifier<QueryResult<String>?>(null);
 
     // populate cache with old timestamp
-    queryClient.queryCache[key] = QueryCacheEntry(QueryResult<String>(key, QueryStatus.success, 'old', null),
+    queryClient.queryCache[key] = QueryCacheEntry(
+        QueryResult<String>(key, QueryStatus.success, 'old', null),
         DateTime.now().subtract(Duration(milliseconds: 200)));
 
     // removed external callback; assert on the rendered UI
@@ -296,10 +308,14 @@ void main() {
     expect(holder.value!.data, equals('fresh'));
     // cache should be updated with fresh value
     final cacheKey = queryKeyToCacheKey(['stale-key']);
-    expect((queryClient.queryCache[cacheKey]!.result as QueryResult<String>).data, equals('fresh'));
+    expect(
+        (queryClient.queryCache[cacheKey]!.result as QueryResult<String>).data,
+        equals('fresh'));
   });
 
-  testWidgets('should refetch when previous fetch is fulfilled (retryer not blocking)', (WidgetTester tester) async {
+  testWidgets(
+      'should refetch when previous fetch is fulfilled (retryer not blocking)',
+      (WidgetTester tester) async {
     final keyList = ['fulfilled-retryer'];
     final cacheKey = queryKeyToCacheKey(keyList);
     final holder = ValueNotifier<QueryResult<String>?>(null);
@@ -316,7 +332,8 @@ void main() {
                 await Future.delayed(Duration(milliseconds: 5));
                 return 'value-$called';
               },
-              staleTime: 10000, // ensure not stale; we will trigger a refetch via cache event
+              staleTime:
+                  10000, // ensure not stale; we will trigger a refetch via cache event
             );
 
             holder.value = result;
@@ -342,12 +359,14 @@ void main() {
     expect(holder.value!.data, equals('value-2'));
   });
 
-  testWidgets('should not refetch when data is not null and not stale', (WidgetTester tester) async {
+  testWidgets('should not refetch when data is not null and not stale',
+      (WidgetTester tester) async {
     final key = queryKeyToCacheKey(['fresh-key']);
 
     // populate cache with recent timestamp
-    queryClient.queryCache[key] =
-        QueryCacheEntry(QueryResult<String>(key, QueryStatus.success, 'cached', null), DateTime.now());
+    queryClient.queryCache[key] = QueryCacheEntry(
+        QueryResult<String>(key, QueryStatus.success, 'cached', null),
+        DateTime.now());
 
     var called = false;
 
@@ -380,7 +399,9 @@ void main() {
     expect(holder.value!.data, equals('cached'));
   });
 
-  testWidgets('staleTime 0 should consider cached data stale immediately and refetch', (WidgetTester tester) async {
+  testWidgets(
+      'staleTime 0 should consider cached data stale immediately and refetch',
+      (WidgetTester tester) async {
     final keyList = ['stale-zero'];
     final cacheKey = queryKeyToCacheKey(keyList);
     final holder = ValueNotifier<QueryResult<String>?>(null);
@@ -418,10 +439,13 @@ void main() {
 
     expect(called, isTrue);
     expect(holder.value!.data, equals('fresh'));
-    expect((queryClient.queryCache[cacheKey]!.result as QueryResult<String>).data, equals('fresh'));
+    expect(
+        (queryClient.queryCache[cacheKey]!.result as QueryResult<String>).data,
+        equals('fresh'));
   });
 
-  testWidgets('staleTime Infinity should never consider data stale', (WidgetTester tester) async {
+  testWidgets('staleTime Infinity should never consider data stale',
+      (WidgetTester tester) async {
     final keyList = ['stale-infinite'];
     final cacheKey = queryKeyToCacheKey(keyList);
     final holder = ValueNotifier<QueryResult<String>?>(null);
@@ -462,7 +486,8 @@ void main() {
     expect(holder.value!.data, equals('cached-old'));
   });
 
-  testWidgets('should refetch when queryKey changes (pagination)', (WidgetTester tester) async {
+  testWidgets('should refetch when queryKey changes (pagination)',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<QueryResult<String>?>(null);
 
     // initial page 1
@@ -516,19 +541,23 @@ void main() {
     final cacheKey2 = queryKeyToCacheKey(['pagination', 2]);
     var tries = 0;
     while ((queryClient.queryCache[cacheKey2] == null ||
-            (queryClient.queryCache[cacheKey2]!.result as QueryResult<String>).status != QueryStatus.success) &&
+            (queryClient.queryCache[cacheKey2]!.result as QueryResult<String>)
+                    .status !=
+                QueryStatus.success) &&
         tries < 50) {
       await tester.pump(Duration(milliseconds: 10));
       tries++;
     }
 
     expect(queryClient.queryCache.containsKey(cacheKey2), isTrue);
-    final cached = queryClient.queryCache[cacheKey2]!.result as QueryResult<String>;
+    final cached =
+        queryClient.queryCache[cacheKey2]!.result as QueryResult<String>;
     expect(cached.status, equals(QueryStatus.success));
     expect(cached.data, equals('page-2'));
   });
 
-  testWidgets('should fetch when queryKey contains a Map (pagination map)', (WidgetTester tester) async {
+  testWidgets('should fetch when queryKey contains a Map (pagination map)',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<QueryResult<String>?>(null);
 
     // initial page 1 with Map as part of the key
@@ -588,12 +617,14 @@ void main() {
       {'number': 2, 'size': 5}
     ]);
     expect(queryClient.queryCache.containsKey(cacheKey2), isTrue);
-    final cached = queryClient.queryCache[cacheKey2]!.result as QueryResult<String>;
+    final cached =
+        queryClient.queryCache[cacheKey2]!.result as QueryResult<String>;
     expect(cached.status, equals(QueryStatus.success));
     expect(cached.data, equals('page-2'));
   });
 
-  testWidgets('should garbage collect query after gcTime when unmounted', (WidgetTester tester) async {
+  testWidgets('should garbage collect query after gcTime when unmounted',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<QueryResult<String>?>(null);
     final keyList = ['gc-test'];
     final cacheKey = queryKeyToCacheKey(keyList);
@@ -624,7 +655,8 @@ void main() {
     expect(queryClient.queryCache.containsKey(cacheKey), isTrue);
 
     // unmount the hook (no observers should remain)
-    await tester.pumpWidget(QueryClientProvider(client: queryClient, child: MaterialApp(home: Container())));
+    await tester.pumpWidget(QueryClientProvider(
+        client: queryClient, child: MaterialApp(home: Container())));
 
     // wait for the gc timer to fire (max ~500ms to avoid flakiness)
     var tries = 0;
