@@ -1,3 +1,7 @@
+## 1.1.1 (04/01/26)
+
+- Clean dart format
+
 ## 1.1.0 (04/01/26)
 
 - Rework internals: move hook logic into core `QueryObserver` / `Query` and `MutationObserver` / `Mutation`.
