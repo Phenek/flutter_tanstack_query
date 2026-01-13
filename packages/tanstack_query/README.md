@@ -140,37 +140,41 @@ class Todos extends HookWidget {
 
 When a query is marked with `refetchOnWindowFocus`, `refetchOnMount` or `refetchOnReconnect`, the library will call the query's `refetch` callback when those events happen if the option is `true` (the defaults).
 
-You need to implement or wire those events in your app. The library exports `focusManager` and `onlineManager` for this purpose, and `QueryClient` provides convenience methods that will trigger the appropriate behavior for all queries.
+The app is responsible for wiring lifecycle and connectivity events to the exported managers (`focusManager` and `onlineManager`). `QueryClientProvider` will mount the client to listen to those managers when present.
 
 - App focus (window / app active)
-If you already use an app-lifecycle listener widget (for example an `AppLifecycleListener`), call `refetchOnWindowFocus()` in the callback:
+Use an app lifecycle listener and set the focus manager accordingly:
 
-Example: call the client on app focus
+Example:
 ```dart
-AppLifecycleListener(
-  onResumed: () {
-    queryClient.refetchOnWindowFocus();
-  },
-  child: MyApp(),
-);
+AppLifecycleListener(onResume: () {
+  focusManager.setFocused(true);
+}, onInactive: () {
+  focusManager.setFocused(false);
+}, onPause: () {
+  focusManager.setFocused(false);
+});
 ```
 
 - Connectivity monitoring (reconnect)
-If you already use an internet checker provider just call `refetchOnReconnect()` in it.
+Listen to your connectivity provider and update the online manager:
 
-Example: with internet_connection_checker_plus
+Example (internet_connection_checker_plus):
 ```dart
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 
-static InternetConnection connectivity = InternetConnection();
+InternetConnection connectivity = InternetConnection();
 
 connectivity.onStatusChange.listen((status) {
-  if (status case InternetStatus.connected) {
-    queryClient.refetchOnReconnect();
+  if (status == InternetStatus.connected) {
+    onlineManager.setOnline(true);
+  } else {
+    onlineManager.setOnline(false);
   }
 });
 ```
+
 ### Notes
-- Ensure each query's options (or default options) have `refetchOnWindowFocus`, `refetchOnMount` and `refetchOnReconnect` set appropriately (they default to `true`).
-- This implementation keeps the library dependency optional — your app is responsible for wiring lifecycle and connection events; `QueryClientProvider` automatically mounts the client to listen to `focusManager` and `onlineManager` when present.
+- Ensure each query's options (or default options) enable the desired `refetchOnWindowFocus`, `refetchOnMount` and `refetchOnReconnect` behaviors.
+- You can still trigger refetches manually with `QueryClient` helper methods, but wiring the managers as shown keeps the behavior automatic and platform-agnostic.

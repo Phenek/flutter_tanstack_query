@@ -1,3 +1,8 @@
+## 1.2.0 (14/01/26)
+
+- add refetchOnMount, initialData & placeholderData features
+- rework refetchOnWindowFocus refetchOnReconnect
+
 ## 1.1.1 (04/01/26)
 
 - Clean dart format
