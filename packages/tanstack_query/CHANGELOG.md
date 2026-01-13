@@ -1,3 +1,8 @@
+## 1.2.1 (14/01/26)
+
+- upgrade sdk requirement
+- fix analysis
+
 ## 1.2.0 (14/01/26)
 
 - add refetchOnMount, initialData & placeholderData features
