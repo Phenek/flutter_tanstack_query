@@ -78,11 +78,11 @@ class Query<T> extends Removable {
 
         final failRes = QueryResult<T>(
             cacheKey,
-            hasPrevData ? prevRes!.status : QueryStatus.pending,
-            hasPrevData ? prevRes!.data : null,
+            hasPrevData ? prevRes.status : QueryStatus.pending,
+            hasPrevData ? prevRes.data : null,
             error,
             isFetching: true,
-            dataUpdatedAt: hasPrevData ? prevRes!.dataUpdatedAt : null,
+            dataUpdatedAt: hasPrevData ? prevRes.dataUpdatedAt : null,
             isPlaceholderData: false,
             failureCount: failureCount,
             failureReason: error);
@@ -101,10 +101,10 @@ class Query<T> extends Removable {
     final pending = QueryResult<T>(
         cacheKey,
         hasPrevData ? QueryStatus.success : QueryStatus.pending,
-        hasPrevData ? prevRes!.data : null,
+        hasPrevData ? prevRes.data : null,
         null,
         isFetching: true,
-        dataUpdatedAt: hasPrevData ? prevRes!.dataUpdatedAt : null,
+        dataUpdatedAt: hasPrevData ? prevRes.dataUpdatedAt : null,
         isPlaceholderData: false,
         failureCount: 0,
         failureReason: null);

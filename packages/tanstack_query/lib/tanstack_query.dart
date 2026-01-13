@@ -1,7 +1,7 @@
 /// Flutter implementation of TanStack Query patterns: fetching, caching,
 /// invalidation, and background updates. Exports hooks and core types used
 /// by Flutter widgets.
-library tanstack_query;
+library;
 
 export 'src/providers/query_client_provider.dart';
 export 'src/hooks/use_query_client.dart';

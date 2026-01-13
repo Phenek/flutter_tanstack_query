@@ -24,8 +24,7 @@ class QueryClientProvider extends HookWidget {
   final Widget child;
 
   const QueryClientProvider(
-      {Key? key, required this.client, required this.child})
-      : super(key: key);
+      {super.key, required this.client, required this.child});
 
   @override
   Widget build(BuildContext context) {

@@ -4,7 +4,7 @@ version: 1.2.0
 repository: https://github.com/Phenek/flutter_tanstack_query/tree/main/packages/tanstack_query
 
 environment:
-  sdk: ">=2.14.0 <4.0.0"
+  sdk: ">=2.19.4 <4.0.0"
   flutter: ">=1.17.0"
 
 dependencies:
@@ -19,5 +19,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   lints: ^6.0.0
+  flutter_lints: ^6.0.0
   test: ^1.26.3
-  internet_connection_checker_plus: ^1.0.0
+  internet_connection_checker_plus: ^2.9.1+2
