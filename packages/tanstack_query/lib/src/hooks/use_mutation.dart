@@ -9,8 +9,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 /// - `mutate(P params)`: triggers the mutation and swallows errors,
 /// - `mutateAsync(P params, [MutateOptions<T>? options])`: returns the
 ///    Future of the mutation,
-/// - `resetMutation()`: resets the mutation state,
-/// - `result()`: getter for the current [MutationObserverResult<T, P>].
+/// - `reset()`: resets the mutation state.
 ///
 /// Parameters:
 /// - [mutationFn] (required): Function that performs the mutation and returns
@@ -18,7 +17,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 /// - [onSuccess]: Called with the mutation result `T` when the mutation
 ///   completes successfully.
 /// - [onError]: Called with the error object when the mutation fails.
-/// - [onSettle]: Called when the mutation finishes either successfully or
+/// - [onSettled]: Called when the mutation finishes either successfully or
 ///   with an error. Signature: `(T? data, Object? error)`.
 /// - [retry]: Controls retry behavior. May be:
 ///   - `false` (no retry),
@@ -36,7 +35,7 @@ MutationResult<T, P> useMutation<T, P>(
     {required Future<T> Function(P) mutationFn,
     void Function(T?)? onSuccess,
     void Function(Object?)? onError,
-    void Function(T?, Object?)? onSettle,
+    void Function(T?, Object?)? onSettled,
     dynamic retry,
     dynamic retryDelay,
     int? gcTime}) {
@@ -50,7 +49,7 @@ MutationResult<T, P> useMutation<T, P>(
               mutationFn: mutationFn,
               onSuccess: onSuccess,
               onError: onError,
-              onSettled: onSettle,
+              onSettled: onSettled,
               retry: retry,
               retryDelay: retryDelay,
               gcTime: gcTime,
@@ -63,7 +62,7 @@ MutationResult<T, P> useMutation<T, P>(
       mutationFn: mutationFn,
       onSuccess: onSuccess,
       onError: onError,
-      onSettled: onSettle,
+      onSettled: onSettled,
       retry: retry,
       retryDelay: retryDelay,
       gcTime: gcTime,
@@ -74,7 +73,7 @@ MutationResult<T, P> useMutation<T, P>(
     mutationFn,
     onSuccess,
     onError,
-    onSettle,
+    onSettled,
     retry,
     retryDelay,
     gcTime
@@ -105,10 +104,10 @@ MutationResult<T, P> useMutation<T, P>(
   }
 
   // Reset mutation state
-  void resetMutation() {
+  void reset() {
     observer.reset();
   }
 
   return MutationResult<T, P>(
-      mutate, mutateAsync, resetMutation, () => resultState.value);
+      mutate, mutateAsync, reset, () => resultState.value);
 }

@@ -4,37 +4,30 @@ title: useMutation
 ---
 
 ```dart
-const {
-  data,
-  error,
-  status,
-  isPending,
-  isSuccess,
-  isError,
-  failureCount,
-  failureReason,
-  mutate,
-  mutateAsync,
-  resetMutation,
-  result,
-} = useMutation(
-  {
-    mutationFn,
-    onSuccess,
-    onError,
-    onSettled,
-    retry,
-    retryDelay,
-    gcTime,
-  },
-  queryClient,
-)
+class MutationResult<T, P> {
+  final T? data;
+  final Object? error;
+  final bool isError;
+  final bool isIdle;
+  final bool isPending;
+  final bool isSuccess;
+  final int failureCount;
+  final Object? failureReason;
+  final void Function(P variables) mutate;
+  final Future<T> Function(P variables, [MutateOptions<T>? options]) mutateAsync;
+  final void Function() reset;
+  final MutationStatus status;
+}
 
-// Usage:
-mutate(variables);
-await mutateAsync(variables);
-resetMutation();
-const current = result(); // returns MutationObserverResult<T, P>
+MutationResult<T, P> useMutation<T, P>({
+  required Future<T> Function(P) mutationFn,
+  void Function(T?)? onSuccess,
+  void Function(Object?)? onError,
+  void Function(T?, Object?)? onSettled,
+  dynamic retry,
+  dynamic retryDelay,
+  int? gcTime,
+})
 ```
 
 **Parameter1 (Options)**
@@ -69,30 +62,33 @@ const current = result(); // returns MutationObserverResult<T, P>
 
 **Returns**
 
-- `mutate: void Function(P variables)`
-  - Triggers the mutation and swallows errors (does not throw). Accepts an optional per-call `MutateOptions<T>` when used via the lower-level observer API.
-- `mutateAsync: Future<T> Function(P variables, [MutateOptions<T>? options])`
-  - Triggers the mutation and returns a `Future` that resolves with the mutation result or throws on error.
-- `resetMutation: void Function()`
-  - Resets the mutation state to its initial state.
-- `result: MutationObserverResult<T, P> Function()`
-  - Returns the current `MutationObserverResult` exposing the latest state.
-
-- `status: MutationStatus`
-  - One of `idle`, `pending`, `error`, or `success`.
-- `isIdle`, `isPending`, `isSuccess`, `isError`: `bool`
-  - Convenience booleans derived from `status`.
 - `data: T?`
   - Defaults to `null`.
   - The last successfully resolved data for the mutation.
 - `error: Object?`
   - Defaults to `null`.
   - The error object for the mutation, if an error occurred.
+- `isError: bool`
+  - Whether the last mutation finished with an error.
+- `isIdle: bool`
+  - Whether the mutation is currently idle.
+- `isPending: bool`
+  - Whether the mutation is in progress.
+- `isSuccess: bool`
+  - Whether the last mutation finished successfully.
 - `failureCount: int`
   - The failure count for the current retry cycle.
 - `failureReason: Object?`
   - The last failure reason, if any.
+- `mutate: void Function(P variables)`
+  - Triggers the mutation and swallows errors (does not throw). Accepts an optional per-call `MutateOptions<T>` when used via the lower-level observer API.
+- `mutateAsync: Future<T> Function(P variables, [MutateOptions<T>? options])`
+  - Triggers the mutation and returns a `Future` that resolves with the mutation result or throws on error.
+- `reset: void Function()`
+  - Resets the mutation state to its initial state.
+- `status: MutationStatus`
+  - One of `idle`, `pending`, `error`, or `success`.
 
 Notes:
 - The hook exposes a small wrapper (`MutationResult`) around the underlying observer. Use `mutate` for fire-and-forget semantics or `mutateAsync` when you need a `Future`.
-- The `variables` and `submittedAt` properties from some JS docs are not currently surfaced in the Dart observer result; use `result()` to access available fields.
+- The `variables` and `submittedAt` properties from some JS docs are not currently surfaced in the Dart observer result.

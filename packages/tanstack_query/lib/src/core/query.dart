@@ -73,21 +73,23 @@ class Query<T> extends Removable {
       onFail: (failureCount, error) {
         // Update cache to reflect the failure count/reason while still retrying
         final prevEntry = client.queryCache[cacheKey];
-      final prevRes = prevEntry?.result as QueryResult<T>?;
-      final hasPrevData = prevRes != null && prevRes.data != null;
+        final prevRes = prevEntry?.result as QueryResult<T>?;
+        final hasPrevData = prevRes != null && prevRes.data != null;
 
-      final failRes = QueryResult<T>(
-          cacheKey, hasPrevData ? prevRes!.status : QueryStatus.pending,
-          hasPrevData ? prevRes!.data : null, error,
-          isFetching: true,
-          dataUpdatedAt: hasPrevData ? prevRes!.dataUpdatedAt : null,
-          isPlaceholderData: false,
-          failureCount: failureCount,
-          failureReason: error);
-      client.queryCache[cacheKey] = QueryCacheEntry<T>(
-          failRes, DateTime.now(),
-          queryFnRunning: running);
-      _notifyObservers();
+        final failRes = QueryResult<T>(
+            cacheKey,
+            hasPrevData ? prevRes!.status : QueryStatus.pending,
+            hasPrevData ? prevRes!.data : null,
+            error,
+            isFetching: true,
+            dataUpdatedAt: hasPrevData ? prevRes!.dataUpdatedAt : null,
+            isPlaceholderData: false,
+            failureCount: failureCount,
+            failureReason: error);
+        client.queryCache[cacheKey] = QueryCacheEntry<T>(
+            failRes, DateTime.now(),
+            queryFnRunning: running);
+        _notifyObservers();
       },
     );
 
@@ -95,9 +97,6 @@ class Query<T> extends Removable {
     final prevEntry = client.queryCache[cacheKey];
     final prevRes = prevEntry?.result as QueryResult<T>?;
     final hasPrevData = prevRes != null && prevRes.data != null;
-
-    // Debug prints replaced with kDebugMode guarded logs
-    if (kDebugMode) debugPrint('Query.fetch START for $cacheKey (hasPrevData=$hasPrevData)');
 
     final pending = QueryResult<T>(
         cacheKey,
@@ -119,7 +118,6 @@ class Query<T> extends Removable {
 
     try {
       final value = await running;
-      if (kDebugMode) debugPrint('Query.fetch SUCCESS for $cacheKey -> $value');
       final queryResult = QueryResult<T>(
           cacheKey, QueryStatus.success, value, null,
           isFetching: false,
@@ -135,7 +133,6 @@ class Query<T> extends Removable {
       _retryer = null;
       return value;
     } catch (e) {
-      if (kDebugMode) debugPrint('Query.fetch ERROR for $cacheKey -> $e');
       final failureCount = _retryer?.failureCount ?? 0;
       final errorRes = QueryResult<T>(cacheKey, QueryStatus.error, null, e,
           isFetching: false,
@@ -156,6 +153,52 @@ class Query<T> extends Removable {
   void cancel() {
     _retryer?.cancel();
     clearGcTimeout();
+  }
+
+  /// Handle window/app focus events: find an observer that wants a refetch
+  /// on focus and trigger it, then continue any paused retryer.
+  void onFocus() {
+    dynamic observer;
+    for (var o in _observers) {
+      try {
+        if (o.shouldFetchOnWindowFocus != null) {
+          observer = o;
+          break;
+        }
+      } catch (_) {}
+    }
+
+    try {
+      observer?.refetch();
+    } catch (_) {}
+
+    // Continue fetch if currently paused
+    try {
+      _retryer?.continueRetry();
+    } catch (_) {}
+  }
+
+  /// Handle online events: find an observer that wants a refetch on reconnect
+  /// and trigger it, then continue any paused retryer.
+  void onOnline() {
+    dynamic observer;
+    for (var o in _observers) {
+      try {
+        if (o.shouldFetchOnReconnect != null) {
+          observer = o;
+          break;
+        }
+      } catch (_) {}
+    }
+
+    try {
+      observer?.refetch();
+    } catch (_) {}
+
+    // Continue fetch if currently paused
+    try {
+      _retryer?.continueRetry();
+    } catch (_) {}
   }
 
   @override

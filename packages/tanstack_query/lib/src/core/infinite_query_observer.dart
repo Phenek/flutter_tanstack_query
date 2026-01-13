@@ -27,8 +27,9 @@ class InfiniteQueryOptions<T> extends QueryOptions<T> {
     this.debounceTime,
     double? staleTime,
     bool? enabled,
-    bool? refetchOnRestart,
+    bool? refetchOnWindowFocus,
     bool? refetchOnReconnect,
+    bool? refetchOnMount,
     int? gcTime,
     dynamic retry,
     bool? retryOnMount,
@@ -42,8 +43,9 @@ class InfiniteQueryOptions<T> extends QueryOptions<T> {
           queryKey: queryKey,
           staleTime: staleTime,
           enabled: enabled,
-          refetchOnRestart: refetchOnRestart,
+          refetchOnWindowFocus: refetchOnWindowFocus,
           refetchOnReconnect: refetchOnReconnect,
+          refetchOnMount: refetchOnMount,
           gcTime: gcTime,
           retry: retry,
           retryDelay: retryDelay,
@@ -66,17 +68,18 @@ class InfiniteQueryOptions<T> extends QueryOptions<T> {
   }
 
   /// Evaluate placeholder data for infinite queries as a list of pages.
-  List<T>? resolvePlaceholderPages(List<T>? previousValue, dynamic previousQuery) {
+  List<T>? resolvePlaceholderPages(
+      List<T>? previousValue, dynamic previousQuery) {
     try {
       if (placeholderData is PlaceholderDataFn<List<T>>) {
-        return (placeholderData as PlaceholderDataFn<List<T>>)(previousValue, previousQuery);
+        return (placeholderData as PlaceholderDataFn<List<T>>)(
+            previousValue, previousQuery);
       }
       return placeholderData as List<T>?;
     } catch (_) {
       return null;
     }
   }
-
 }
 
 /// Observer for infinite/paginated queries.
@@ -113,16 +116,24 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
   Query? _lastQueryWithDefinedData;
   dynamic _lastPlaceholderDataOption;
 
-
   void setOptions(InfiniteQueryOptions<T> options) {
     _options = options;
   }
 
   @override
   void onSubscribe() {
-    // When the first listener subscribes, behave similarly to QueryObserver:
-    // only fetch if enabled AND (no cache entry exists, the cache entry is errored
-    // and retryOnMount is true, or the cache entry is stale per staleTime)
+    // Delegate mount-time fetching policy to shouldFetchOnMount to match
+    // the QueryObserver behavior and the new `refetchOnMount` option.
+    if (shouldFetchOnMount()) {
+      if (_options.debounceTime == null) {
+        refetch();
+      } else {
+        _setLoadingWithDebounce();
+      }
+    }
+  }
+
+  bool shouldFetchOnMount() {
     final cacheKey = queryKeyToCacheKey(_options.queryKey);
     final entry = _client.queryCache[cacheKey];
 
@@ -134,19 +145,16 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
     final retryOnMount =
         _options.retryOnMount ?? _client.defaultOptions.queries.retryOnMount;
 
-    final shouldFetch = enabled &&
-        (entry == null ||
-            (isErrored && retryOnMount) ||
-            (DateTime.now().difference(entry.timestamp).inMilliseconds >
-                (_options.staleTime ?? 0)));
+    final isStale = entry == null ||
+        (DateTime.now().difference(entry.timestamp).inMilliseconds >
+            (_options.staleTime ?? 0));
 
-    if (shouldFetch) {
-      if (_options.debounceTime == null) {
-        refetch();
-      } else {
-        _setLoadingWithDebounce();
-      }
-    }
+    final refetchOnMount = _options.refetchOnMount ??
+        _client.defaultOptions.queries.refetchOnMount;
+
+    return enabled &&
+        refetchOnMount &&
+        (entry == null || (isErrored && retryOnMount) || isStale);
   }
 
   InfiniteQueryResult<T> getCurrentResult() => _currentResult;
@@ -175,24 +183,27 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
       // Determine whether there is real cached data (do NOT treat observer
       // placeholder data as cache data — placeholder should not be persisted).
       final bool prevHasCacheData = (prevRes?.data?.isNotEmpty == true);
-      final List<T> cachePrevData = prevHasCacheData ? (prevRes!.data as List<T>) : <T>[];
+      final List<T> cachePrevData =
+          prevHasCacheData ? (prevRes!.data as List<T>) : <T>[];
 
       // For the observer we may still want to show the placeholder/initial
       // data while fetching even if it is not persisted to cache.
       final bool localHasData = (_currentResult.data?.isNotEmpty == true);
       final bool hasPrevDataForObserver = prevHasCacheData || localHasData;
-      final List<T> observerPrevData = prevHasCacheData
-          ? cachePrevData
-          : (_currentResult.data ?? <T>[]);
+      final List<T> observerPrevData =
+          prevHasCacheData ? cachePrevData : (_currentResult.data ?? <T>[]);
 
       // Preserve placeholder flag from the observer if the data we are using
       // originates from the observer's placeholder/initial state.
-      final bool prevIsPlaceholder = _currentResult.isPlaceholderData == true && !prevHasCacheData;
+      final bool prevIsPlaceholder =
+          _currentResult.isPlaceholderData == true && !prevHasCacheData;
 
       // Build the observer-facing result (keeps placeholder if appropriate)
       final observerResult = InfiniteQueryResult<T>(
           key: cacheKey,
-          status: hasPrevDataForObserver ? QueryStatus.success : QueryStatus.pending,
+          status: hasPrevDataForObserver
+              ? QueryStatus.success
+              : QueryStatus.pending,
           data: observerPrevData,
           isFetching: true,
           error: null,
@@ -223,7 +234,8 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
           // Update cache to reflect failure while still retrying (do not persist placeholder)
           final failRes = InfiniteQueryResult<T>(
               key: cacheKey,
-              status: prevHasCacheData ? QueryStatus.success : QueryStatus.pending,
+              status:
+                  prevHasCacheData ? QueryStatus.success : QueryStatus.pending,
               data: cachePrevData,
               isFetching: true,
               error: error,
@@ -241,8 +253,9 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
 
       // Assign observer result to be shown immediately (but persist cacheFacingResult)
       tracked = TrackedFuture<T?>(retryer.start());
-      _client.queryCache[cacheKey] = cacheEntry =
-          QueryCacheEntry(cacheFacingResult, DateTime.now(), queryFnRunning: tracked);
+      _client.queryCache[cacheKey] = cacheEntry = QueryCacheEntry(
+          cacheFacingResult, DateTime.now(),
+          queryFnRunning: tracked);
       _currentResult = observerResult;
       observerSnapshot = observerResult;
       shouldUpdateTheCache = true;
@@ -254,7 +267,8 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
     // Show the observer-facing result (may include placeholder data) while the
     // running fetch completes. Prefer the snapshot we captured above, or fall
     // back to the cache entry if none.
-    _currentResult = observerSnapshot ?? (cacheEntry.result as InfiniteQueryResult<T>);
+    _currentResult =
+        observerSnapshot ?? (cacheEntry.result as InfiniteQueryResult<T>);
     _notify();
 
     try {
@@ -447,7 +461,9 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
             _options.placeholderData == _lastPlaceholderDataOption) {
           placeholderData = _currentResult.data;
         } else {
-          placeholderData = _options.resolvePlaceholderPages(_lastQueryWithDefinedData?.entry?.result?.data, _lastQueryWithDefinedData);
+          placeholderData = _options.resolvePlaceholderPages(
+              _lastQueryWithDefinedData?.entry?.result?.data,
+              _lastQueryWithDefinedData);
         }
 
         if (placeholderData != null && placeholderData is List<T>) {
@@ -496,7 +512,8 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
         // intentionally set the cache timestamp to epoch (0) so it is treated
         // as stale by default and will refetch on mount unless staleTime is set.
         final ts = DateTime.fromMillisecondsSinceEpoch(q.dataUpdatedAt ?? 0);
-        _client.queryCache[cacheKey] = QueryCacheEntry<InfiniteQueryResult<T>>(q, ts);
+        _client.queryCache[cacheKey] =
+            QueryCacheEntry<InfiniteQueryResult<T>>(q, ts);
         return;
       }
     }
@@ -504,7 +521,8 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
     // If no cache entry and placeholderData is provided, use it for the observer
     if (_options.placeholderData != null) {
       dynamic placeholderData;
-      if (_currentResult.isPlaceholderData && _options.placeholderData == _lastPlaceholderDataOption) {
+      if (_currentResult.isPlaceholderData &&
+          _options.placeholderData == _lastPlaceholderDataOption) {
         placeholderData = _currentResult.data;
       } else {
         placeholderData = _options.resolvePlaceholderPages(null, null);
@@ -549,13 +567,16 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
         final dynamic raw = event.entry?.result;
         if (raw is InfiniteQueryResult<T>) {
           // If no data but placeholderData is provided, try to use it
-          if ((raw.data?.isEmpty ?? true) && _options.placeholderData != null) {            dynamic placeholderData;
-            if (_currentResult.isPlaceholderData && _options.placeholderData == _lastPlaceholderDataOption) {
+          if ((raw.data?.isEmpty ?? true) && _options.placeholderData != null) {
+            dynamic placeholderData;
+            if (_currentResult.isPlaceholderData &&
+                _options.placeholderData == _lastPlaceholderDataOption) {
               placeholderData = _currentResult.data;
             } else {
               try {
                 if (_options.placeholderData is PlaceholderDataFn<List<T>>) {
-                  placeholderData = (_options.placeholderData as PlaceholderDataFn<List<T>>)(null, null);
+                  placeholderData = (_options.placeholderData
+                      as PlaceholderDataFn<List<T>>)(null, null);
                 } else {
                   placeholderData = _options.placeholderData as List<T>?;
                 }
@@ -603,9 +624,9 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
           _notify();
         }
       } else if (event.type == QueryCacheEventType.refetch ||
-          (event.type == QueryCacheEventType.refetchOnRestart &&
-              (_options.refetchOnRestart ??
-                  _client.defaultOptions.queries.refetchOnRestart)) ||
+          (event.type == QueryCacheEventType.refetchOnWindowFocus &&
+              (_options.refetchOnWindowFocus ??
+                  _client.defaultOptions.queries.refetchOnWindowFocus)) ||
           (event.type == QueryCacheEventType.refetchOnReconnect &&
               (_options.refetchOnReconnect ??
                   _client.defaultOptions.queries.refetchOnReconnect))) {
@@ -627,14 +648,16 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
       final cacheKey = queryKeyToCacheKey(_options.queryKey);
       // loading...
       // Preserve previous data (including placeholder) while refetching pages
-      final prevRes = _client.queryCache[cacheKey]?.result as InfiniteQueryResult<T>?;
+      final prevRes =
+          _client.queryCache[cacheKey]?.result as InfiniteQueryResult<T>?;
       final bool prevHasData = prevRes?.data?.isNotEmpty == true;
       final bool localHasData = _currentResult.data?.isNotEmpty == true;
       final bool hasPrevData = prevHasData || localHasData;
       final List<T> prevData = prevHasData
           ? (prevRes!.data as List<T>)
           : (_currentResult.data ?? <T>[]);
-      final bool prevIsPlaceholder = _currentResult.isPlaceholderData == true && !prevHasData;
+      final bool prevIsPlaceholder =
+          _currentResult.isPlaceholderData == true && !prevHasData;
 
       var queryResult = InfiniteQueryResult<T>(
           key: cacheKey,

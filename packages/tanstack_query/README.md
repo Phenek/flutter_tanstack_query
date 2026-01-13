@@ -37,7 +37,7 @@ void main() {
       queries: QueryDefaultOptions(
         enabled: true,
         staleTime: 0,
-        refetchOnRestart: false,
+        refetchOnWindowFocus: false,
         refetchOnReconnect: false,
       ),
     ),
@@ -136,27 +136,27 @@ class Todos extends HookWidget {
 
 
 
-## Refetching on app restart and reconnect 🔁
+## Refetching on focus and reconnect 🔁
 
-When a query is marked with `refetchOnRestart` or `refetchOnReconnect`, the library will call the query's `refetch` callback when a restart or reconnect event happens if the option is `true` (the default).
+When a query is marked with `refetchOnWindowFocus`, `refetchOnMount` or `refetchOnReconnect`, the library will call the query's `refetch` callback when those events happen if the option is `true` (the defaults).
 
-You need to implement those events in your app.
+You need to implement or wire those events in your app. The library exports `focusManager` and `onlineManager` for this purpose, and `QueryClient` provides convenience methods that will trigger the appropriate behavior for all queries.
 
-- App lifecycle (restart)
-If you already use an app-lifecycle listener widget (for example an `AppLifecycleListener`), call `refetchOnRestart()` in the callback:
+- App focus (window / app active)
+If you already use an app-lifecycle listener widget (for example an `AppLifecycleListener`), call `refetchOnWindowFocus()` in the callback:
 
-Example: call the client on app restart
+Example: call the client on app focus
 ```dart
 AppLifecycleListener(
-  onRestart: () {
-    queryClient.refetchOnRestart();
+  onResumed: () {
+    queryClient.refetchOnWindowFocus();
   },
   child: MyApp(),
 );
 ```
 
 - Connectivity monitoring (reconnect)
-If you already use an internet checker provider just call the `refetchOnReconnect()` in it
+If you already use an internet checker provider just call `refetchOnReconnect()` in it.
 
 Example: with internet_connection_checker_plus
 ```dart
@@ -172,5 +172,5 @@ connectivity.onStatusChange.listen((status) {
 });
 ```
 ### Notes
-- Ensure each query's options (or default options) have `refetchOnRestart` and `refetchOnReconnect` set appropriately.
-- This implementation keeps the library dependency optional — your app is responsible for wiring lifecycle and connection events. The library exposes `refetchOnRestart()` and `refetchOnReconnect()` on `queryClient` so your app can call it from any listener.
+- Ensure each query's options (or default options) have `refetchOnWindowFocus`, `refetchOnMount` and `refetchOnReconnect` set appropriately (they default to `true`).
+- This implementation keeps the library dependency optional — your app is responsible for wiring lifecycle and connection events; `QueryClientProvider` automatically mounts the client to listen to `focusManager` and `onlineManager` when present.

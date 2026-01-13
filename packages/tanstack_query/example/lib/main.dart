@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:tanstack_query/tanstack_query.dart';
-import 'pages/todos_page.dart';
-import 'pages/infinity_page.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:tanstack_query/tanstack_query.dart';
+import 'pages/infinity_page.dart';
+import 'pages/todos_page.dart';
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 
 void main() {
   var queryClient = QueryClient(
@@ -10,8 +11,8 @@ void main() {
       queries: QueryDefaultOptions(
         enabled: true,
         staleTime: 0,
-        refetchOnRestart: false,
-        refetchOnReconnect: false,
+        refetchOnWindowFocus: true,
+        refetchOnReconnect: true,
       ),
     ),
     queryCache: QueryCache(
@@ -19,6 +20,24 @@ void main() {
     mutationCache: MutationCache(
         config: MutationCacheConfig(onError: (e) => debugPrint(e.toString()))),
   );
+
+  InternetConnection connectivity = InternetConnection();
+
+  connectivity.onStatusChange.listen((status) {
+    if (status == InternetStatus.connected) {
+      onlineManager.setOnline(true);
+    } else {
+      onlineManager.setOnline(false);
+    }
+  });
+
+  AppLifecycleListener(onResume: () {
+    focusManager.setFocused(true);
+  }, onInactive: () {
+    focusManager.setFocused(false);
+  }, onPause: () {
+    focusManager.setFocused(false);
+  });
 
   runApp(
     QueryClientProvider(client: queryClient, child: const App()),

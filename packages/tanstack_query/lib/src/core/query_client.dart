@@ -26,14 +26,61 @@ class QueryClient {
     instance = this;
   }
 
-  /// Trigger refetch behavior for queries configured to refetch on restart.
-  void refetchOnRestart() {
-    queryCache.refetchOnRestart();
+  /// Trigger refetch behavior for queries configured to refetch on window/app focus.
+  void refetchOnWindowFocus() {
+    queryCache.refetchOnWindowFocus();
   }
 
   /// Trigger refetch behavior for queries configured to refetch on reconnect.
   void refetchOnReconnect() {
     queryCache.refetchOnReconnect();
+  }
+
+  // Tracking how many times the client was mounted (e.g. provider instances)
+  int _mountCount = 0;
+  void Function()? _unsubscribeFocus;
+  void Function()? _unsubscribeOnline;
+
+  /// Mount the client to start listening to focus/online events. The
+  /// QueryClientProvider should call [mount] on mount and [unmount] on
+  /// dispose.
+  void mount() {
+    _mountCount++;
+    if (_mountCount != 1) return;
+
+    _unsubscribeFocus = focusManager.subscribe((focused) async {
+      if (focused) {
+        await resumePausedMutations();
+        queryCache.onFocus();
+      }
+    });
+
+    _unsubscribeOnline = onlineManager.subscribe((online) async {
+      if (online) {
+        await resumePausedMutations();
+        queryCache.onOnline();
+      }
+    });
+  }
+
+  /// Stop listening to global focus/online events when the client is
+  /// unmounted (e.g. provider disposed).
+  void unmount() {
+    _mountCount--;
+    if (_mountCount != 0) return;
+
+    _unsubscribeFocus?.call();
+    _unsubscribeFocus = null;
+
+    _unsubscribeOnline?.call();
+    _unsubscribeOnline = null;
+  }
+
+  /// Resume any paused mutations; placeholder for environments that persist
+  /// mutations across app restarts or offline periods.
+  Future<void> resumePausedMutations() async {
+    // No-op for now; implement if mutation persistence is added.
+    return;
   }
 
   void invalidateQueries({List<Object>? queryKey, bool exact = false}) {
@@ -79,10 +126,7 @@ class QueryClient {
     final oldData = oldEntry?.result.data as T?;
     final newData = updateFn(oldData);
     final queryResult = QueryResult(
-        cacheKey,
-        QueryStatus.success,
-        newData,
-        null,
+        cacheKey, QueryStatus.success, newData, null,
         isFetching: false,
         dataUpdatedAt: DateTime.now().millisecondsSinceEpoch,
         isPlaceholderData: false);

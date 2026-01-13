@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 
@@ -400,7 +400,8 @@ void main() {
     expect(holder.value!.data, equals('cached'));
   });
 
-  testWidgets('should use initialData and then refetch when stale', (WidgetTester tester) async {
+  testWidgets('should use initialData and then refetch when stale',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<QueryResult<String>?>(null);
 
     await tester.pumpWidget(QueryClientProvider(
@@ -432,7 +433,8 @@ void main() {
     expect(holder.value!.data, equals('fetched'));
   });
 
-  testWidgets('should show placeholderData while pending (not persisted)', (WidgetTester tester) async {
+  testWidgets('should show placeholderData while pending (not persisted)',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<QueryResult<String>?>(null);
 
     await tester.pumpWidget(QueryClientProvider(
@@ -471,7 +473,8 @@ void main() {
     // Poll for the UI transition rather than using pumpAndSettle which may
     // hang if background timers are scheduled by Retryer.
     var tries = 0;
-    while ((holder.value == null || holder.value!.data != 'real') && tries < 50) {
+    while (
+        (holder.value == null || holder.value!.data != 'real') && tries < 50) {
       await tester.pump(Duration(milliseconds: 10));
       tries++;
     }

@@ -7,7 +7,8 @@ typedef InitialDataFn<T> = T? Function();
 typedef InitialDataUpdatedAtFn = int? Function();
 
 /// Typedef for placeholder data function: takes previous value and previous query (observer-only) and returns a value.
-typedef PlaceholderDataFn<T> = T? Function(T? previousValue, dynamic previousQuery);
+typedef PlaceholderDataFn<T> = T? Function(
+    T? previousValue, dynamic previousQuery);
 
 class QueryOptions<T> {
   /// Function that performs the query and returns the data as a `Future<T>`.
@@ -32,8 +33,11 @@ class QueryOptions<T> {
   /// Whether the query should be retried on mount when it contains an error.
   final bool? retryOnMount;
 
-  /// Whether the query should refetch on app restart.
-  final bool? refetchOnRestart;
+  /// Whether the query should refetch when the observer mounts/subscribes.
+  final bool? refetchOnMount;
+
+  /// Whether the query should refetch on window/app focus.
+  final bool? refetchOnWindowFocus;
 
   /// Whether the query should refetch on reconnect.
   final bool? refetchOnReconnect;
@@ -60,7 +64,8 @@ class QueryOptions<T> {
     this.retry,
     this.retryDelay,
     this.retryOnMount,
-    this.refetchOnRestart,
+    this.refetchOnMount,
+    this.refetchOnWindowFocus,
     this.refetchOnReconnect,
     this.gcTime,
     this.initialData,
@@ -76,7 +81,8 @@ class QueryOptions<T> {
     dynamic retry,
     dynamic retryDelay,
     bool? retryOnMount,
-    bool? refetchOnRestart,
+    bool? refetchOnMount,
+    bool? refetchOnWindowFocus,
     bool? refetchOnReconnect,
     int? gcTime,
     Object? initialData,
@@ -91,12 +97,12 @@ class QueryOptions<T> {
       retry: retry ?? this.retry,
       retryDelay: retryDelay ?? this.retryDelay,
       retryOnMount: retryOnMount ?? this.retryOnMount,
-      refetchOnRestart: refetchOnRestart ?? this.refetchOnRestart,
+      refetchOnMount: refetchOnMount ?? this.refetchOnMount,
+      refetchOnWindowFocus: refetchOnWindowFocus ?? this.refetchOnWindowFocus,
       refetchOnReconnect: refetchOnReconnect ?? this.refetchOnReconnect,
       gcTime: gcTime ?? this.gcTime,
       initialData: initialData ?? this.initialData,
-      initialDataUpdatedAt:
-          initialDataUpdatedAt ?? this.initialDataUpdatedAt,
+      initialDataUpdatedAt: initialDataUpdatedAt ?? this.initialDataUpdatedAt,
       placeholderData: placeholderData ?? this.placeholderData,
     );
   }
@@ -129,7 +135,8 @@ class QueryOptions<T> {
   T? resolvePlaceholderData(T? previousValue, dynamic previousQuery) {
     try {
       if (placeholderData is PlaceholderDataFn<T>) {
-        return (placeholderData as PlaceholderDataFn<T>)(previousValue, previousQuery);
+        return (placeholderData as PlaceholderDataFn<T>)(
+            previousValue, previousQuery);
       }
       return placeholderData as T?;
     } catch (_) {
@@ -141,47 +148,61 @@ class QueryOptions<T> {
 /// Represents the current state of a query, including `status`, optional
 /// `data`, `error` and whether a fetch is ongoing.
 class QueryResult<T> {
-  String key;
-  QueryStatus status;
-  T? data;
+  /// The data returned by the query, or `null` if not available.
+  final T? data;
 
-  /// Whether the query is currently fetching (background refetches etc).
-  bool isFetching;
-  Object? error;
-
-  /// The number of times the query has failed in its current fetch cycle.
-  /// Incremented each time a retry attempt fails and reset to 0 on success.
-  int failureCount;
-
-  /// The last failure reason (if any). Reset to `null` on success.
-  Object? failureReason;
-
-  /// Whether the cached value is considered stale (observer calculates this).
-  bool isStale;
-
-  /// Milliseconds since epoch when the data itself was last updated. Useful for
-  /// determining staleness independent of cache timestamp (used by initialData).
+  /// Milliseconds since epoch when the data was last updated.
   int? dataUpdatedAt;
 
-  /// If true, this result is placeholder data and should not be persisted.
+  /// The error object if the query failed, or `null`.
+  final Object? error;
+
+  /// The number of times the query has failed in its current fetch cycle.
+  int failureCount;
+
+  /// The last failure reason, or `null` if none.
+  Object? failureReason;
+
+  /// Whether the query is in the error state.
+  bool get isError => status == QueryStatus.error;
+
+  /// Whether the query is currently fetching.
+  final bool isFetching;
+
+  /// Whether the query is in the pending/loading state.
+  bool get isPending => status == QueryStatus.pending;
+
+  /// Whether this result is placeholder data and should not be persisted.
   bool isPlaceholderData;
 
-  /// Optional refetch callback provided by observers so consumers can trigger
-  /// a refetch directly from the result object.
-  Future<QueryResult<T>> Function({bool? throwOnError})? refetch;
+  /// Whether the cached value is considered stale.
+  final bool isStale;
 
-  QueryResult(this.key, this.status, this.data, this.error,
-      {this.isFetching = false,
-      this.isStale = false,
-      this.dataUpdatedAt,
-      this.isPlaceholderData = false,
-      this.refetch,
-      this.failureCount = 0,
-      this.failureReason});
-
-  bool get isError => status == QueryStatus.error;
+  /// Whether the query is in the success state.
   bool get isSuccess => status == QueryStatus.success;
-  bool get isPending => status == QueryStatus.pending;
+
+  /// Optional refetch callback to trigger a refetch.
+  final Future<QueryResult<T>> Function({bool? throwOnError})? refetch;
+
+  /// The current status of the query.
+  final QueryStatus status;
+
+  /// The key uniquely identifying this query.
+  final String key;
+
+  QueryResult(
+    this.key,
+    this.status,
+    this.data,
+    this.error, {
+    this.isFetching = false,
+    this.isStale = false,
+    this.dataUpdatedAt,
+    this.isPlaceholderData = false,
+    this.refetch,
+    this.failureCount = 0,
+    this.failureReason,
+  });
 }
 
 /// Result type returned by [useInfiniteQuery], with helper `fetchNextPage` and

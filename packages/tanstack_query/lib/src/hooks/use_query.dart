@@ -7,25 +7,14 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 /// `data`, `error`, and `status` flags to drive UI states.
 ///
 /// Parameters:
-/// - [queryFn] (required): Function returning a `Future<T>` used to fetch data.
 /// - [queryKey] (required): A `List<Object>` uniquely identifying the query.
-/// - [staleTime]: Time in **milliseconds** after which cached data is considered
-///   stale and will be refetched on next access. If null, the client's default
-///   `staleTime` is used.
-/// - [enabled]: When `false`, automatic fetching is disabled until `true`.
-///   Defaults to `queryClient.defaultOptions.queries.enabled`.
-/// - [refetchOnRestart]: When `true`, refetches on app restart.
-/// - [refetchOnReconnect]: When `true`, refetches on reconnect.
+/// - [queryFn] (required): Function returning a `Future<T>` used to fetch data.
 /// - [gcTime]: Garbage-collection time in milliseconds for this query's cache
 ///   entry. When all observers are removed, the query will be removed from the
 ///   cache after `gcTime` ms. A value <= 0 disables GC. If unspecified, the
 ///   client default is used.
-/// - [retry]: Controls retry behavior; same accepted forms as in `useMutation`:
-///   `false`, `true`, an `int`, or a function `(failureCount, error) => bool`.
-/// - [retryOnMount]: If `false`, a query that currently has an error will not
-///   attempt to retry when mounted.
-/// - [retryDelay]: Milliseconds between retries, or a function
-///   `(attempt, error) => int` returning the delay in ms.
+/// - [enabled]: When `false`, automatic fetching is disabled until `true`.
+///   Defaults to `queryClient.defaultOptions.queries.enabled`.
 /// - [initialData]: T | () => T — initial value that is persisted to cache if
 ///   provided and the cache is empty. It is considered stale by default
 ///   unless `initialDataUpdatedAt` is set.
@@ -34,24 +23,36 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 ///   determine if a refetch is required on mount.
 /// - [placeholderData]: T | (previousValue, previousQuery) => T — observer-only
 ///   placeholder shown while the query is pending; not persisted to cache.
+/// - [refetchOnMount]: When `true`, refetch when the observer mounts.
+/// - [refetchOnReconnect]: When `true`, refetch query on reconnect.
+/// - [refetchOnWindowFocus]: When `true`, refetch query on window/app focus.
+/// - [retry]: Controls retry behavior; same accepted forms as in `useMutation`:
+///   `false`, `true`, an `int`, or a function `(failureCount, error) => bool`.
+/// - [retryOnMount]: If `false`, a query that currently has an error will not
+///   attempt to retry when mounted.
+/// - [retryDelay]: Milliseconds between retries, or a function
+///   `(attempt, error) => int` returning the delay in ms.
+/// - [staleTime]: Time in **milliseconds** after which cached data is considered
+///   stale and will be refetched on next access. If null, the client's default
+///   `staleTime` is used.
 ///
 /// Returns:
-/// The current [QueryResult<T>] for the query (fields include `data`, `error`,
-/// and `status`).
+/// The current [QueryResult<T>] for the query
 QueryResult<T> useQuery<T>(
-    {required Future<T> Function() queryFn,
-    required List<Object> queryKey,
-    double? staleTime,
-    bool? enabled,
-    bool? refetchOnRestart,
-    bool? refetchOnReconnect,
+    {required List<Object> queryKey,
+    required Future<T> Function() queryFn,
     int? gcTime,
+    bool? enabled,
+    Object? initialData,
+    Object? initialDataUpdatedAt,
+    Object? placeholderData,
+    bool? refetchOnMount,
+    bool? refetchOnReconnect,
+    bool? refetchOnWindowFocus,
     dynamic retry,
     bool? retryOnMount,
     dynamic retryDelay,
-    Object? initialData,
-    Object? initialDataUpdatedAt,
-    Object? placeholderData}) {
+    double? staleTime}) {
   final queryClient = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
 
@@ -62,8 +63,9 @@ QueryResult<T> useQuery<T>(
             queryKey: queryKey,
             staleTime: staleTime,
             enabled: enabled ?? queryClient.defaultOptions.queries.enabled,
-            refetchOnRestart: refetchOnRestart,
+            refetchOnWindowFocus: refetchOnWindowFocus,
             refetchOnReconnect: refetchOnReconnect,
+            refetchOnMount: refetchOnMount,
             gcTime: gcTime,
             retry: retry,
             retryOnMount: retryOnMount,
@@ -77,8 +79,9 @@ QueryResult<T> useQuery<T>(
         queryFn,
         staleTime,
         enabled,
-        refetchOnRestart,
+        refetchOnWindowFocus,
         refetchOnReconnect,
+        refetchOnMount,
         gcTime,
         retry,
         retryOnMount,

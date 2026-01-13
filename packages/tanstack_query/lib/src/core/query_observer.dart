@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 import 'subscribable.dart';
 import 'package:flutter/foundation.dart';
@@ -64,9 +63,16 @@ class QueryObserver<TQueryFnData, TError, TData>
 
   @override
   void onSubscribe() {
-    // Called when the first listener subscribes. Start a refetch when
-    // the current cache entry is missing, stale, or in error state —
-    // mirroring the previous `useQuery` behavior. Respect `retryOnMount`.
+    // Called when the first listener subscribes. Decide based on
+    // `refetchOnMount` whether to start a refetch. Delegate the policy to
+    // `shouldFetchOnMount` so behavior matches JS implementation.
+    if (shouldFetchOnMount()) {
+      refetch();
+    }
+  }
+
+  /// Whether this observer should trigger a refetch when it mounts/subscribes.
+  bool shouldFetchOnMount() {
     final cacheKey = queryKeyToCacheKey(options.queryKey);
     final entry = _client.queryCache[cacheKey];
 
@@ -78,16 +84,36 @@ class QueryObserver<TQueryFnData, TError, TData>
     final retryOnMount =
         options.retryOnMount ?? _client.defaultOptions.queries.retryOnMount;
 
-    final shouldFetch = enabled &&
-        (entry == null ||
-            (isErrored && retryOnMount) ||
-            (DateTime.now().difference(entry.timestamp).inMilliseconds >
-                (options.staleTime ?? 0)));
+    final isStale = entry == null ||
+        (DateTime.now().difference(entry.timestamp).inMilliseconds >
+            (options.staleTime ?? 0));
 
-    if (shouldFetch) {
-      // Fire-and-forget the fetch
-      refetch();
-    }
+    final refetchOnMount =
+        options.refetchOnMount ?? _client.defaultOptions.queries.refetchOnMount;
+
+    return enabled &&
+        refetchOnMount &&
+        (entry == null || (isErrored && retryOnMount) || isStale);
+  }
+
+  /// Whether this observer should refetch when the window/app regains focus.
+  bool shouldFetchOnWindowFocus() {
+    final refetchOnWindowFocus = options.refetchOnWindowFocus ??
+        _client.defaultOptions.queries.refetchOnWindowFocus;
+    if (!refetchOnWindowFocus) return false;
+    final enabled = options.enabled ?? true;
+    if (!enabled) return false;
+    return _currentResult.isStale;
+  }
+
+  /// Whether this observer should refetch when the connection reconnects.
+  bool shouldFetchOnReconnect() {
+    final refetchOnReconnect = options.refetchOnReconnect ??
+        _client.defaultOptions.queries.refetchOnReconnect;
+    if (!refetchOnReconnect) return false;
+    final enabled = options.enabled ?? true;
+    if (!enabled) return false;
+    return _currentResult.isStale;
   }
 
   @override
@@ -103,7 +129,6 @@ class QueryObserver<TQueryFnData, TError, TData>
   }
 
   Future<QueryResult<TData>> refetch({bool? throwOnError}) async {
-    if (kDebugMode) debugPrint('QueryObserver.refetch START for ${queryKeyToCacheKey(options.queryKey)}');
     _updateQuery();
     final cacheKey = queryKeyToCacheKey(options.queryKey);
 
@@ -118,7 +143,8 @@ class QueryObserver<TQueryFnData, TError, TData>
         });
         debugPrint('QueryObserver.refetch fetch completed for $cacheKey');
       } catch (e) {
-        debugPrint('QueryObserver.refetch fetch error (caught) for $cacheKey -> $e');
+        debugPrint(
+            'QueryObserver.refetch fetch error (caught) for $cacheKey -> $e');
       }
 
       _currentEntry = _client.queryCache[cacheKey];
@@ -182,10 +208,11 @@ class QueryObserver<TQueryFnData, TError, TData>
           (entry != null ? entry.timestamp.millisecondsSinceEpoch : 0);
 
       final isStale = entry == null ||
-          DateTime.now().difference(
-                  DateTime.fromMillisecondsSinceEpoch(lastUpdatedAt))
-              .inMilliseconds >
-          (options.staleTime ?? 0);
+          DateTime.now()
+                  .difference(
+                      DateTime.fromMillisecondsSinceEpoch(lastUpdatedAt))
+                  .inMilliseconds >
+              (options.staleTime ?? 0);
 
       // Track last query with defined data for placeholderData function usage
       if (res.data != null) {
@@ -199,14 +226,19 @@ class QueryObserver<TQueryFnData, TError, TData>
 
       // If placeholderData is configured and we have no data and are pending,
       // compute placeholderData and treat it as success for this observer only
-      if (options.placeholderData != null && data == null && status == QueryStatus.pending) {
+      if (options.placeholderData != null &&
+          data == null &&
+          status == QueryStatus.pending) {
         dynamic placeholderData;
 
         // Reuse previous placeholder data if possible (memoization)
-        if (_currentResult.isPlaceholderData && options.placeholderData == _lastPlaceholderDataOption) {
+        if (_currentResult.isPlaceholderData &&
+            options.placeholderData == _lastPlaceholderDataOption) {
           placeholderData = _currentResult.data;
         } else {
-          placeholderData = options.resolvePlaceholderData(_lastQueryWithDefinedData?.result?.data, _lastQueryWithDefinedData);
+          placeholderData = options.resolvePlaceholderData(
+              _lastQueryWithDefinedData?.result?.data,
+              _lastQueryWithDefinedData);
         }
 
         if (placeholderData != null) {
@@ -262,9 +294,9 @@ class QueryObserver<TQueryFnData, TError, TData>
           _notify();
         }
       } else if (event.type == QueryCacheEventType.refetch ||
-          (event.type == QueryCacheEventType.refetchOnRestart &&
-              (options.refetchOnRestart ??
-                  _client.defaultOptions.queries.refetchOnRestart)) ||
+          (event.type == QueryCacheEventType.refetchOnWindowFocus &&
+              (options.refetchOnWindowFocus ??
+                  _client.defaultOptions.queries.refetchOnWindowFocus)) ||
           (event.type == QueryCacheEventType.refetchOnReconnect &&
               (options.refetchOnReconnect ??
                   _client.defaultOptions.queries.refetchOnReconnect))) {

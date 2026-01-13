@@ -33,9 +33,36 @@ class MutationState<T> {
   bool get isSuccess => status == MutationStatus.success;
 }
 
-/// The value returned by [useMutation], containing the `mutate` callback and
-/// current mutation state (`status`, `data`, `error`).
 class MutationResult<T, P> {
+  /// Internal supplier to get the latest observer result when accessed.
+  final MutationObserverResult<T, P> Function() _getCurrent;
+
+  MutationResult(this.mutate, this.mutateAsync, this.reset, this._getCurrent);
+
+  /// The last successfully resolved data for the mutation.
+  T? get data => _getCurrent().data;
+
+  /// Error object for the mutation, if an error occurred.
+  Object? get error => _getCurrent().error;
+
+  /// Whether the last mutation finished with an error.
+  bool get isError => status == MutationStatus.error;
+
+  /// Whether the mutation is currently idle.
+  bool get isIdle => status == MutationStatus.idle;
+
+  /// Whether the mutation is in progress.
+  bool get isPending => status == MutationStatus.pending;
+
+  /// Whether the last mutation finished successfully.
+  bool get isSuccess => status == MutationStatus.success;
+
+  /// The failure count for the current retry cycle.
+  int get failureCount => _getCurrent().failureCount;
+
+  /// The last failure reason (if any).
+  Object? get failureReason => _getCurrent().failureReason;
+
   /// Function to trigger the mutation.
   final void Function(P) mutate;
 
@@ -45,26 +72,6 @@ class MutationResult<T, P> {
   /// Reset the mutation state.
   final void Function() reset;
 
-  /// Internal supplier to get the latest observer result when accessed.
-  final MutationObserverResult<T, P> Function() _getCurrent;
-
-  MutationResult(this.mutate, this.mutateAsync, this.reset, this._getCurrent);
-
-  T? get data => _getCurrent().data;
+  /// Current status of the mutation (idle, pending, error, success).
   MutationStatus get status => _getCurrent().status;
-  Object? get error => _getCurrent().error;
-  int get failureCount => _getCurrent().failureCount;
-  Object? get failureReason => _getCurrent().failureReason;
-
-  /// Whether the mutation is currently idle.
-  bool get isIdle => status == MutationStatus.idle;
-
-  /// Whether the mutation is in progress.
-  bool get isPending => status == MutationStatus.pending;
-
-  /// Whether the last mutation finished with an error.
-  bool get isError => status == MutationStatus.error;
-
-  /// Whether the last mutation finished successfully.
-  bool get isSuccess => status == MutationStatus.success;
 }

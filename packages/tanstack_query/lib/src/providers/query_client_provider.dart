@@ -33,6 +33,15 @@ class QueryClientProvider extends HookWidget {
       return QueryClientContext(client: client);
     }, [client]);
 
+    // Mount the client when this provider is added to the widget tree and
+    // unmount when removed so it can listen to global focus/online events.
+    useEffect(() {
+      client.mount();
+      return () {
+        client.unmount();
+      };
+    }, [client]);
+
     return Provider<QueryClientContext>.value(
       value: queryClientContext,
       child: child,

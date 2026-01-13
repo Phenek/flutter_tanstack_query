@@ -5,8 +5,9 @@ class QueryDefaultOptions {
   final dynamic retry; // bool | int | Function
   final dynamic retryDelay; // int | Function
   final bool retryOnMount;
+  final bool refetchOnMount;
   final int gcTime;
-  final bool refetchOnRestart;
+  final bool refetchOnWindowFocus;
   final bool refetchOnReconnect;
 
   const QueryDefaultOptions(
@@ -15,8 +16,9 @@ class QueryDefaultOptions {
       this.retry = 3,
       this.retryDelay = 1000,
       this.retryOnMount = true,
+      this.refetchOnMount = true,
       this.gcTime = 5 * 60 * 1000,
-      this.refetchOnRestart = true,
+      this.refetchOnWindowFocus = true,
       this.refetchOnReconnect = true});
 }
 

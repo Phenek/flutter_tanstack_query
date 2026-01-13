@@ -13,6 +13,7 @@ dependencies:
   flutter_hooks: ^0.21.3
   tanstack_query:
     path: ../
+  internet_connection_checker_plus: ^2.9.1+2
 
 dev_dependencies:
   flutter_test:

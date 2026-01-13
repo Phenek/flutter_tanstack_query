@@ -18,12 +18,8 @@ import '../core/infinite_query_observer.dart';
 ///   given the last page's result.
 /// - [debounceTime]: If set, delays the initial fetch by the provided
 ///   duration to debounce rapid key changes.
-/// - [retry]: Controls retry behavior; same accepted forms as in `useMutation`:
-///   `false`, `true`, an `int`, or a function `(failureCount, error) => bool`.
-/// - [retryOnMount]: If `false`, a query that currently has an error will not
-///   attempt to retry when mounted.
-/// - [retryDelay]: Milliseconds between retries, or a function
-///   `(attempt, error) => int` returning the delay in ms.
+/// - [gcTime]: Garbage-collection time in milliseconds for this query's cache entry.
+/// - [enabled]: Whether the query is enabled.
 /// - [initialData]: T | () => T — initial value that is persisted to cache if
 ///   provided and the cache is empty. It is considered stale by default
 ///   unless `initialDataUpdatedAt` is set.
@@ -32,7 +28,17 @@ import '../core/infinite_query_observer.dart';
 ///   determine if a refetch is required on mount.
 /// - [placeholderData]: T | (previousValue, previousQuery) => T — observer-only
 ///   placeholder shown while the query is pending; not persisted to cache.
-/// - [enabled], [refetchOnRestart], [refetchOnReconnect]: same semantics as
+/// - [refetchOnMount]: When `true`, refetch when the observer mounts/subscribes.
+/// - [refetchOnReconnect]: When `true`, refetch query on reconnect.
+/// - [refetchOnWindowFocus]: When `true`, refetch query on window/app focus.
+/// - [retry]: Controls retry behavior;
+///   `false`, `true`, an `int`, or a function `(failureCount, error) => bool`.
+/// - [retryOnMount]: If `false`, a query that currently has an error will not
+///   attempt to retry when mounted.
+/// - [retryDelay]: Milliseconds between retries, or a function
+///   `(attempt, error) => int` returning the delay in ms.
+/// - [staleTime]: Staleness duration (milliseconds) for cached pages.
+/// - [enabled], [refetchOnWindowFocus], [refetchOnReconnect], [refetchOnMount]: same semantics as
 ///   [useQuery].
 
 /// Hook for paginated/infinite queries.
@@ -48,8 +54,9 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
   int Function(T lastResult)? getNextPageParam,
   Duration? debounceTime,
   double? staleTime,
-  bool? refetchOnRestart,
+  bool? refetchOnWindowFocus,
   bool? refetchOnReconnect,
+  bool? refetchOnMount,
   int? gcTime,
   dynamic retry,
   bool? retryOnMount,
@@ -70,8 +77,9 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
             debounceTime: debounceTime,
             staleTime: staleTime,
             enabled: enabled,
-            refetchOnRestart: refetchOnRestart,
+            refetchOnWindowFocus: refetchOnWindowFocus,
             refetchOnReconnect: refetchOnReconnect,
+            refetchOnMount: refetchOnMount,
             gcTime: gcTime,
             retry: retry,
             retryOnMount: retryOnMount,
@@ -88,8 +96,9 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
         debounceTime,
         staleTime,
         enabled,
-        refetchOnRestart,
+        refetchOnWindowFocus,
         refetchOnReconnect,
+        refetchOnMount,
         gcTime,
         retry,
         retryOnMount,
@@ -147,6 +156,8 @@ void resetValues<T>(ObjectRef<int> currentPage, int initialPageParam,
     ValueNotifier<InfiniteQueryResult<T>> result,
     {bool isLoading = false}) {
   currentPage.value = initialPageParam;
-  result.value.status = QueryStatus.pending;
-  result.value.data = [];
+  // Use copyWith to create a fresh immutable-like result with cleared data
+  // and pending status rather than mutating fields directly.
+  result.value =
+      result.value.copyWith(status: QueryStatus.pending, data: <T>[]);
 }

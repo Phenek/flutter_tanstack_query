@@ -20,4 +20,6 @@ export 'src/core/query.dart';
 export 'src/core/retryer.dart';
 export 'src/core/types.dart';
 export 'src/core/query_types.dart';
+export 'src/core/online_manager.dart';
+export 'src/core/focus_manager.dart';
 export 'src/core/utils.dart';

@@ -325,7 +325,8 @@ void main() {
     expect(nextCached.data, equals(<int>[]));
   });
 
-  testWidgets('should show initialData and then refetch (infinite)', (WidgetTester tester) async {
+  testWidgets('should show initialData and then refetch (infinite)',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
     await tester.pumpWidget(QueryClientProvider(
@@ -359,7 +360,8 @@ void main() {
     expect(holder.value!.data, equals([99]));
   });
 
-  testWidgets('should show placeholderData while pending (infinite)', (WidgetTester tester) async {
+  testWidgets('should show placeholderData while pending (infinite)',
+      (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
     await tester.pumpWidget(QueryClientProvider(

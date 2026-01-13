@@ -25,7 +25,7 @@ enum QueryCacheEventType {
   updated,
   removed,
   refetch,
-  refetchOnRestart,
+  refetchOnWindowFocus,
   refetchOnReconnect,
 }
 
@@ -161,11 +161,11 @@ class QueryCache extends Subscribable<QueryCacheListener> {
         callerId: callerId));
   }
 
-  /// Trigger refetch events for all cache entries; typically used on restart.
-  void refetchOnRestart() {
+  /// Trigger refetch events for all cache entries when window/app focus occurs.
+  void refetchOnWindowFocus() {
     for (var k in _cache.keys) {
       _notifyListeners(QueryCacheNotifyEvent(
-          QueryCacheEventType.refetchOnRestart, k, _cache[k]));
+          QueryCacheEventType.refetchOnWindowFocus, k, _cache[k]));
     }
   }
 
@@ -174,6 +174,26 @@ class QueryCache extends Subscribable<QueryCacheListener> {
     for (var k in _cache.keys) {
       _notifyListeners(QueryCacheNotifyEvent(
           QueryCacheEventType.refetchOnReconnect, k, _cache[k]));
+    }
+  }
+
+  /// Notify each built Query instance that the app/window gained focus so
+  /// they can decide whether to refetch.
+  void onFocus() {
+    for (var q in _queries.values) {
+      try {
+        if (q != null && q is Query) q.onFocus();
+      } catch (_) {}
+    }
+  }
+
+  /// Notify each built Query instance that the connection returned online so
+  /// they can decide whether to refetch.
+  void onOnline() {
+    for (var q in _queries.values) {
+      try {
+        if (q != null && q is Query) q.onOnline();
+      } catch (_) {}
     }
   }
 
@@ -234,13 +254,13 @@ class QueryCache extends Subscribable<QueryCacheListener> {
       if (initData != null) {
         final updatedAt = options.resolveInitialDataUpdatedAt() ?? 0;
 
-        final queryResult = QueryResult(cacheKey, QueryStatus.success,
-            initData as T, null,
+        final queryResult = QueryResult(
+            cacheKey, QueryStatus.success, initData as T, null,
             isFetching: false,
             dataUpdatedAt: updatedAt,
             isPlaceholderData: false);
-        _cache[cacheKey] = QueryCacheEntry(queryResult,
-            DateTime.fromMillisecondsSinceEpoch(updatedAt));
+        _cache[cacheKey] = QueryCacheEntry(
+            queryResult, DateTime.fromMillisecondsSinceEpoch(updatedAt));
       }
     }
 
