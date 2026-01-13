@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
+
 class CancelledError implements Exception {
   final bool silent;
   final bool revert;
@@ -54,6 +57,7 @@ class Retryer<T> {
       try {
         final r = await fn();
         if (!_cancelled) {
+          if (kDebugMode) debugPrint('Retryer: attempt success -> $r');
           _status = 'fulfilled';
           completer.complete(r);
         } else {
@@ -69,6 +73,7 @@ class Retryer<T> {
 
         // Increase failure count and notify
         _failureCount += 1;
+        if (kDebugMode) debugPrint('Retryer: attempt failed $_failureCount -> $e');
         onFail?.call(_failureCount, e);
 
         // Determine whether to retry

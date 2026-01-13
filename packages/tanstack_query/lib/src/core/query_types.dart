@@ -1,5 +1,14 @@
 import 'types.dart';
 
+/// Typedef for a function that returns initial data (used by `initialData`).
+typedef InitialDataFn<T> = T? Function();
+
+/// Typedef for a function that returns the `initialDataUpdatedAt` timestamp.
+typedef InitialDataUpdatedAtFn = int? Function();
+
+/// Typedef for placeholder data function: takes previous value and previous query (observer-only) and returns a value.
+typedef PlaceholderDataFn<T> = T? Function(T? previousValue, dynamic previousQuery);
+
 class QueryOptions<T> {
   /// Function that performs the query and returns the data as a `Future<T>`.
   final Future<T> Function() queryFn;
@@ -32,6 +41,17 @@ class QueryOptions<T> {
   /// Garbage collection time (milliseconds) after which unused queries are removed.
   final int? gcTime;
 
+  /// Initial data to populate the cache with if no entry exists.
+  /// Can be a value (`T`) or an `InitialDataFn<T>`.
+  final Object? initialData;
+
+  /// Timestamp (ms) or `InitialDataUpdatedAtFn` for when `initialData` was last updated.
+  final Object? initialDataUpdatedAt;
+
+  /// Placeholder data to show while a query is pending; not persisted to cache.
+  /// Can be a value (`T`) or a `PlaceholderDataFn<T>` that receives `(previousValue, previousQuery)`.
+  final Object? placeholderData;
+
   QueryOptions({
     required this.queryFn,
     required this.queryKey,
@@ -43,6 +63,9 @@ class QueryOptions<T> {
     this.refetchOnRestart,
     this.refetchOnReconnect,
     this.gcTime,
+    this.initialData,
+    this.initialDataUpdatedAt,
+    this.placeholderData,
   });
 
   QueryOptions<T> copyWith({
@@ -56,6 +79,9 @@ class QueryOptions<T> {
     bool? refetchOnRestart,
     bool? refetchOnReconnect,
     int? gcTime,
+    Object? initialData,
+    Object? initialDataUpdatedAt,
+    Object? placeholderData,
   }) {
     return QueryOptions<T>(
       queryFn: queryFn ?? this.queryFn,
@@ -68,7 +94,47 @@ class QueryOptions<T> {
       refetchOnRestart: refetchOnRestart ?? this.refetchOnRestart,
       refetchOnReconnect: refetchOnReconnect ?? this.refetchOnReconnect,
       gcTime: gcTime ?? this.gcTime,
+      initialData: initialData ?? this.initialData,
+      initialDataUpdatedAt:
+          initialDataUpdatedAt ?? this.initialDataUpdatedAt,
+      placeholderData: placeholderData ?? this.placeholderData,
     );
+  }
+
+  /// Evaluate `initialData` safely and return a typed value or `null`.
+  T? resolveInitialData() {
+    try {
+      if (initialData is InitialDataFn<T>) {
+        return (initialData as InitialDataFn<T>)();
+      }
+      return initialData as T?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Evaluate `initialDataUpdatedAt` safely and return an `int?` timestamp.
+  int? resolveInitialDataUpdatedAt() {
+    try {
+      if (initialDataUpdatedAt is InitialDataUpdatedAtFn) {
+        return (initialDataUpdatedAt as InitialDataUpdatedAtFn)();
+      }
+      return initialDataUpdatedAt as int?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Evaluate `placeholderData` safely; returns typed value or `null`.
+  T? resolvePlaceholderData(T? previousValue, dynamic previousQuery) {
+    try {
+      if (placeholderData is PlaceholderDataFn<T>) {
+        return (placeholderData as PlaceholderDataFn<T>)(previousValue, previousQuery);
+      }
+      return placeholderData as T?;
+    } catch (_) {
+      return null;
+    }
   }
 }
 
@@ -90,8 +156,15 @@ class QueryResult<T> {
   /// The last failure reason (if any). Reset to `null` on success.
   Object? failureReason;
 
-  /// Whether the cached value is considered stale.
+  /// Whether the cached value is considered stale (observer calculates this).
   bool isStale;
+
+  /// Milliseconds since epoch when the data itself was last updated. Useful for
+  /// determining staleness independent of cache timestamp (used by initialData).
+  int? dataUpdatedAt;
+
+  /// If true, this result is placeholder data and should not be persisted.
+  bool isPlaceholderData;
 
   /// Optional refetch callback provided by observers so consumers can trigger
   /// a refetch directly from the result object.
@@ -100,6 +173,8 @@ class QueryResult<T> {
   QueryResult(this.key, this.status, this.data, this.error,
       {this.isFetching = false,
       this.isStale = false,
+      this.dataUpdatedAt,
+      this.isPlaceholderData = false,
       this.refetch,
       this.failureCount = 0,
       this.failureReason});

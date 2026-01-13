@@ -26,6 +26,14 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 ///   attempt to retry when mounted.
 /// - [retryDelay]: Milliseconds between retries, or a function
 ///   `(attempt, error) => int` returning the delay in ms.
+/// - [initialData]: T | () => T — initial value that is persisted to cache if
+///   provided and the cache is empty. It is considered stale by default
+///   unless `initialDataUpdatedAt` is set.
+/// - [initialDataUpdatedAt]: int (ms) | () => int | null — timestamp for when
+///   the initialData was last updated; used together with staleTime to
+///   determine if a refetch is required on mount.
+/// - [placeholderData]: T | (previousValue, previousQuery) => T — observer-only
+///   placeholder shown while the query is pending; not persisted to cache.
 ///
 /// Returns:
 /// The current [QueryResult<T>] for the query (fields include `data`, `error`,
@@ -40,7 +48,10 @@ QueryResult<T> useQuery<T>(
     int? gcTime,
     dynamic retry,
     bool? retryOnMount,
-    dynamic retryDelay}) {
+    dynamic retryDelay,
+    Object? initialData,
+    Object? initialDataUpdatedAt,
+    Object? placeholderData}) {
   final queryClient = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
 
@@ -57,6 +68,9 @@ QueryResult<T> useQuery<T>(
             retry: retry,
             retryOnMount: retryOnMount,
             retryDelay: retryDelay,
+            initialData: initialData,
+            initialDataUpdatedAt: initialDataUpdatedAt,
+            placeholderData: placeholderData,
           ),
       [
         queryClient,
@@ -69,9 +83,11 @@ QueryResult<T> useQuery<T>(
         retry,
         retryOnMount,
         retryDelay,
+        initialData,
+        initialDataUpdatedAt,
+        placeholderData,
         cacheKey
       ]);
-
   // Observer follows the same pattern as useInfiniteQuery: create once and
   // keep it in sync via setOptions to avoid complex lifecycle code in the hook.
   // Create the observer once for this cache key and keep it in sync via setOptions

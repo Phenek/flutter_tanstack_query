@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 
@@ -398,6 +399,86 @@ void main() {
     expect(holder.value!.status, equals(QueryStatus.success));
     expect(holder.value!.data, equals('cached'));
   });
+
+  testWidgets('should use initialData and then refetch when stale', (WidgetTester tester) async {
+    final holder = ValueNotifier<QueryResult<String>?>(null);
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: queryClient,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final result = useQuery<String>(
+              queryKey: ['initial-data-key'],
+              queryFn: () async {
+                await Future.delayed(Duration(milliseconds: 10));
+                return 'fetched';
+              },
+              initialData: 'initial',
+            );
+
+            holder.value = result;
+
+            return Container();
+          }),
+        )));
+
+    // initial state should show the initial data immediately
+    await tester.pump();
+    expect(holder.value!.data, equals('initial'));
+
+    // since initialData is considered stale by default, it should refetch
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(holder.value!.data, equals('fetched'));
+  });
+
+  testWidgets('should show placeholderData while pending (not persisted)', (WidgetTester tester) async {
+    final holder = ValueNotifier<QueryResult<String>?>(null);
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: queryClient,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final result = useQuery<String>(
+              queryKey: ['placeholder-key'],
+              queryFn: () async {
+                await Future.delayed(Duration(milliseconds: 10));
+                return 'real';
+              },
+              placeholderData: 'placeholder',
+            );
+
+            holder.value = result;
+
+            return Container();
+          }),
+        )));
+
+    // initial state should be placeholder with isPlaceholderData = true
+    await tester.pump();
+    expect(holder.value!.data, equals('placeholder'));
+    expect(holder.value!.isPlaceholderData, isTrue);
+
+    // Trigger a cache-level refetch and ensure placeholder stays while pending
+    final cacheKey = queryKeyToCacheKey(['placeholder-key']);
+    queryClient.queryCache.refetchByCacheKey(cacheKey);
+    await tester.pump();
+
+    // still placeholder while refetch pending
+    expect(holder.value!.data, equals('placeholder'));
+    expect(holder.value!.isPlaceholderData, isTrue);
+
+    // Poll for the UI transition rather than using pumpAndSettle which may
+    // hang if background timers are scheduled by Retryer.
+    var tries = 0;
+    while ((holder.value == null || holder.value!.data != 'real') && tries < 50) {
+      await tester.pump(Duration(milliseconds: 10));
+      tries++;
+    }
+
+    expect(holder.value!.data, equals('real'));
+    expect(holder.value!.isPlaceholderData, isFalse);
+  }, timeout: Timeout(Duration(seconds: 5)));
 
   testWidgets(
       'staleTime 0 should consider cached data stale immediately and refetch',

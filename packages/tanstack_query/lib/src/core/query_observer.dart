@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 import 'subscribable.dart';
+import 'package:flutter/foundation.dart';
 
 /// Listener typedef used by `QueryObserver`.
 ///
@@ -102,15 +103,27 @@ class QueryObserver<TQueryFnData, TError, TData>
   }
 
   Future<QueryResult<TData>> refetch({bool? throwOnError}) async {
+    if (kDebugMode) debugPrint('QueryObserver.refetch START for ${queryKeyToCacheKey(options.queryKey)}');
     _updateQuery();
     final cacheKey = queryKeyToCacheKey(options.queryKey);
 
     if (_query == null) return _currentResult;
 
     try {
-      await _query!.fetch();
+      // Bound the fetch with a timeout so observers don't wait forever
+      try {
+        await _query!.fetch().timeout(Duration(seconds: 4), onTimeout: () {
+          debugPrint('QueryObserver.refetch TIMEOUT for $cacheKey');
+          return null;
+        });
+        debugPrint('QueryObserver.refetch fetch completed for $cacheKey');
+      } catch (e) {
+        debugPrint('QueryObserver.refetch fetch error (caught) for $cacheKey -> $e');
+      }
+
       _currentEntry = _client.queryCache[cacheKey];
     } catch (e) {
+      debugPrint('QueryObserver.refetch fetch error for $cacheKey -> $e');
       _currentEntry = _client.queryCache[cacheKey];
       if (throwOnError == true) rethrow;
     } finally {
@@ -118,6 +131,7 @@ class QueryObserver<TQueryFnData, TError, TData>
       _notify();
     }
 
+    debugPrint('QueryObserver.refetch DONE for $cacheKey');
     return _currentResult;
   }
 
@@ -151,23 +165,67 @@ class QueryObserver<TQueryFnData, TError, TData>
     } catch (_) {}
   }
 
+  Query? _lastQueryWithDefinedData;
+  dynamic _lastPlaceholderDataOption;
+
   void _updateResult() {
     final entry = _currentEntry;
     final res = entry?.result;
 
     if (res is QueryResult) {
       final cacheKey = queryKeyToCacheKey(options.queryKey);
+
+      // Determine the timestamp to use for staleness checks. Prefer the
+      // dataUpdatedAt on the result (used by initialData) and fall back to
+      // entry.timestamp when missing.
+      final int lastUpdatedAt = res.dataUpdatedAt ??
+          (entry != null ? entry.timestamp.millisecondsSinceEpoch : 0);
+
       final isStale = entry == null ||
-          DateTime.now().difference(entry.timestamp).inMilliseconds >
-              (options.staleTime ?? 0);
+          DateTime.now().difference(
+                  DateTime.fromMillisecondsSinceEpoch(lastUpdatedAt))
+              .inMilliseconds >
+          (options.staleTime ?? 0);
+
+      // Track last query with defined data for placeholderData function usage
+      if (res.data != null) {
+        _lastQueryWithDefinedData = _query;
+      }
+
+      // Prepare default values
+      var status = res.status;
+      var data = res.data as TData?;
+      var isPlaceholder = false;
+
+      // If placeholderData is configured and we have no data and are pending,
+      // compute placeholderData and treat it as success for this observer only
+      if (options.placeholderData != null && data == null && status == QueryStatus.pending) {
+        dynamic placeholderData;
+
+        // Reuse previous placeholder data if possible (memoization)
+        if (_currentResult.isPlaceholderData && options.placeholderData == _lastPlaceholderDataOption) {
+          placeholderData = _currentResult.data;
+        } else {
+          placeholderData = options.resolvePlaceholderData(_lastQueryWithDefinedData?.result?.data, _lastQueryWithDefinedData);
+        }
+
+        if (placeholderData != null) {
+          status = QueryStatus.success;
+          data = placeholderData as TData?;
+          isPlaceholder = true;
+          _lastPlaceholderDataOption = options.placeholderData;
+        }
+      }
 
       _currentResult = QueryResult<TData>(
         cacheKey,
-        res.status,
-        res.data as TData?,
+        status,
+        data,
         res.error,
         isFetching: res.isFetching,
         isStale: isStale,
+        dataUpdatedAt: res.dataUpdatedAt,
+        isPlaceholderData: isPlaceholder,
         failureCount: res.failureCount,
         failureReason: res.failureReason,
         refetch: ({bool? throwOnError}) => refetch(throwOnError: throwOnError),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 import 'removable.dart';
 
@@ -71,30 +72,61 @@ class Query<T> extends Removable {
           options.retryDelay ?? client.defaultOptions.queries.retryDelay,
       onFail: (failureCount, error) {
         // Update cache to reflect the failure count/reason while still retrying
-        final failRes = QueryResult<T>(
-            cacheKey, QueryStatus.pending, null, error,
-            isFetching: true, failureCount: failureCount, failureReason: error);
-        client.queryCache[cacheKey] = QueryCacheEntry<T>(
-            failRes, DateTime.now(),
-            queryFnRunning: running);
-        _notifyObservers();
+        final prevEntry = client.queryCache[cacheKey];
+      final prevRes = prevEntry?.result as QueryResult<T>?;
+      final hasPrevData = prevRes != null && prevRes.data != null;
+
+      final failRes = QueryResult<T>(
+          cacheKey, hasPrevData ? prevRes!.status : QueryStatus.pending,
+          hasPrevData ? prevRes!.data : null, error,
+          isFetching: true,
+          dataUpdatedAt: hasPrevData ? prevRes!.dataUpdatedAt : null,
+          isPlaceholderData: false,
+          failureCount: failureCount,
+          failureReason: error);
+      client.queryCache[cacheKey] = QueryCacheEntry<T>(
+          failRes, DateTime.now(),
+          queryFnRunning: running);
+      _notifyObservers();
       },
     );
 
     // Mark as pending in cache and notify observers immediately
-    final pending = QueryResult<T>(cacheKey, QueryStatus.pending, null, null,
-        isFetching: true, failureCount: 0, failureReason: null);
+    final prevEntry = client.queryCache[cacheKey];
+    final prevRes = prevEntry?.result as QueryResult<T>?;
+    final hasPrevData = prevRes != null && prevRes.data != null;
+
+    // Debug prints replaced with kDebugMode guarded logs
+    if (kDebugMode) debugPrint('Query.fetch START for $cacheKey (hasPrevData=$hasPrevData)');
+
+    final pending = QueryResult<T>(
+        cacheKey,
+        hasPrevData ? QueryStatus.success : QueryStatus.pending,
+        hasPrevData ? prevRes!.data : null,
+        null,
+        isFetching: true,
+        dataUpdatedAt: hasPrevData ? prevRes!.dataUpdatedAt : null,
+        isPlaceholderData: false,
+        failureCount: 0,
+        failureReason: null);
+
     // Wrap retryer.start() in a TrackedFuture so other code can inspect queryFnRunning
     running = TrackedFuture<T>(_retryer!.start());
+    debugPrint('TrackedFuture created for $cacheKey');
     client.queryCache[cacheKey] =
         QueryCacheEntry<T>(pending, DateTime.now(), queryFnRunning: running);
     _notifyObservers();
 
     try {
       final value = await running;
+      if (kDebugMode) debugPrint('Query.fetch SUCCESS for $cacheKey -> $value');
       final queryResult = QueryResult<T>(
           cacheKey, QueryStatus.success, value, null,
-          isFetching: false, failureCount: 0, failureReason: null);
+          isFetching: false,
+          dataUpdatedAt: DateTime.now().millisecondsSinceEpoch,
+          isPlaceholderData: false,
+          failureCount: 0,
+          failureReason: null);
       client.queryCache[cacheKey] =
           QueryCacheEntry<T>(queryResult, DateTime.now());
       client.queryCache.config.onSuccess?.call(value);
@@ -103,9 +135,14 @@ class Query<T> extends Removable {
       _retryer = null;
       return value;
     } catch (e) {
+      if (kDebugMode) debugPrint('Query.fetch ERROR for $cacheKey -> $e');
       final failureCount = _retryer?.failureCount ?? 0;
       final errorRes = QueryResult<T>(cacheKey, QueryStatus.error, null, e,
-          isFetching: false, failureCount: failureCount, failureReason: e);
+          isFetching: false,
+          dataUpdatedAt: null,
+          isPlaceholderData: false,
+          failureCount: failureCount,
+          failureReason: e);
       client.queryCache[cacheKey] =
           QueryCacheEntry<T>(errorRes, DateTime.now());
       client.queryCache.config.onError?.call(e);

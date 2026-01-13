@@ -325,6 +325,89 @@ void main() {
     expect(nextCached.data, equals(<int>[]));
   });
 
+  testWidgets('should show initialData and then refetch (infinite)', (WidgetTester tester) async {
+    final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: client,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final result = useInfiniteQuery<int>(
+              queryKey: ['infinite', 'initial-data'],
+              queryFn: (page) async {
+                await Future.delayed(Duration(milliseconds: 10));
+                return 99; // fetched page will be 99 for first page
+              },
+              initialPageParam: 1,
+              initialData: <int>[1, 2],
+            );
+
+            holder.value = result;
+
+            return Container();
+          }),
+        )));
+
+    // initial state should show the initial data immediately
+    await tester.pump();
+    expect(holder.value!.data, equals([1, 2]));
+
+    // since initialData is considered stale by default, it should refetch
+    await tester.pump();
+    await tester.pumpAndSettle();
+    // fetched should replace with fresh page value
+    expect(holder.value!.data, equals([99]));
+  });
+
+  testWidgets('should show placeholderData while pending (infinite)', (WidgetTester tester) async {
+    final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: client,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final result = useInfiniteQuery<int>(
+              queryKey: ['infinite', 'placeholder'],
+              queryFn: (page) async {
+                await Future.delayed(Duration(milliseconds: 10));
+                return 5;
+              },
+              initialPageParam: 1,
+              placeholderData: <int>[42],
+            );
+
+            holder.value = result;
+
+            return Container();
+          }),
+        )));
+
+    // initial state should be placeholder with isPlaceholderData = true
+    await tester.pump();
+    expect(holder.value!.data, equals([42]));
+    expect(holder.value!.isPlaceholderData, isTrue);
+
+    // Trigger a cache-level refetch and ensure placeholder stays while pending
+    final cacheKey = queryKeyToCacheKey(['infinite', 'placeholder']);
+    client.queryCache.refetchByCacheKey(cacheKey);
+    await tester.pump();
+
+    // still placeholder while refetch pending
+    expect(holder.value!.data, equals([42]));
+    expect(holder.value!.isPlaceholderData, isTrue);
+
+    // after fetch completes, real data should replace it and not be placeholder
+    // Poll for the UI transition rather than relying on pumpAndSettle which may hang
+    var tries = 0;
+    while ((holder.value == null || holder.value!.data != [5]) && tries < 50) {
+      await tester.pump(Duration(milliseconds: 10));
+      tries++;
+    }
+
+    expect(holder.value!.data, equals([5]));
+    expect(holder.value!.isPlaceholderData, isFalse);
+  }, timeout: Timeout(Duration(seconds: 5)));
+
   testWidgets('should debounce when queryKey changes and debounceTime is set',
       (WidgetTester tester) async {
     bool toggled = false;

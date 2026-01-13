@@ -225,6 +225,25 @@ class QueryCache extends Subscribable<QueryCacheListener> {
 
     final q = Query<T>(client, options);
     _queries[cacheKey] = q;
+
+    // If there's no cache entry yet and initialData is provided, persist it
+    // to the cache so queries start with initialized data.
+    if (!_cache.containsKey(cacheKey) && options.initialData != null) {
+      final initData = options.resolveInitialData();
+
+      if (initData != null) {
+        final updatedAt = options.resolveInitialDataUpdatedAt() ?? 0;
+
+        final queryResult = QueryResult(cacheKey, QueryStatus.success,
+            initData as T, null,
+            isFetching: false,
+            dataUpdatedAt: updatedAt,
+            isPlaceholderData: false);
+        _cache[cacheKey] = QueryCacheEntry(queryResult,
+            DateTime.fromMillisecondsSinceEpoch(updatedAt));
+      }
+    }
+
     return q;
   }
 }

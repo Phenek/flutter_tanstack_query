@@ -79,8 +79,13 @@ class QueryClient {
     final oldData = oldEntry?.result.data as T?;
     final newData = updateFn(oldData);
     final queryResult = QueryResult(
-        cacheKey, QueryStatus.success, newData, null,
-        isFetching: false);
+        cacheKey,
+        QueryStatus.success,
+        newData,
+        null,
+        isFetching: false,
+        dataUpdatedAt: DateTime.now().millisecondsSinceEpoch,
+        isPlaceholderData: false);
 
     queryCache[cacheKey] = QueryCacheEntry(queryResult, DateTime.now());
   }
@@ -103,6 +108,12 @@ class QueryClient {
         error: null,
         isFetchingNextPage: false,
         fetchNextPage: () async {});
+
+    // annotate dataUpdatedAt on the stored result
+    try {
+      queryResult.dataUpdatedAt = DateTime.now().millisecondsSinceEpoch;
+      queryResult.isPlaceholderData = false;
+    } catch (_) {}
 
     queryCache[cacheKey] = QueryCacheEntry(queryResult, DateTime.now());
   }
