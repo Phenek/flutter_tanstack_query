@@ -147,6 +147,8 @@ Use an app lifecycle listener and set the focus manager accordingly:
 
 Example:
 ```dart
+WidgetsFlutterBinding.ensureInitialized();
+
 AppLifecycleListener(onResume: () {
   focusManager.setFocused(true);
 }, onInactive: () {

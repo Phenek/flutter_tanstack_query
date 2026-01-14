@@ -51,6 +51,8 @@ import 'package:tanstack_query/tanstack_query.dart';
 import 'package:flutter/widgets.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
   var queryClient = QueryClient(
     defaultOptions: const DefaultOptions(
       queries: QueryDefaultOptions(

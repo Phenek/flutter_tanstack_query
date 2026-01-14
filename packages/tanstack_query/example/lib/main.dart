@@ -6,6 +6,8 @@ import 'pages/todos_page.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  
   var queryClient = QueryClient(
     defaultOptions: const DefaultOptions(
       queries: QueryDefaultOptions(
