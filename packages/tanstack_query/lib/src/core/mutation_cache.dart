@@ -6,16 +6,27 @@ import 'query_client.dart';
 /// `onMutate`, `onSuccess`, and `onError`.
 class MutationCacheConfig {
   /// Called when a mutation fails with an error.
-  final dynamic Function(dynamic error)? onError;
+  ///
+  /// Signature: `(dynamic error, [MutationFunctionContext? context])`.
+  final void Function(dynamic error, [MutationFunctionContext? context])?
+      onError;
 
   /// Called when a mutation succeeds with the returned data.
-  final dynamic Function(dynamic data)? onSuccess;
+  ///
+  /// Signature: `(dynamic data, [MutationFunctionContext? context])`.
+  final void Function(dynamic data, [MutationFunctionContext? context])?
+      onSuccess;
 
   /// Called when a query settles (either success or error).
-  final void Function(dynamic data, dynamic error)? onSettled;
+  ///
+  /// Signature: `(dynamic data, dynamic error, [MutationFunctionContext? context])`.
+  final void Function(dynamic data, dynamic error,
+      [MutationFunctionContext? context])? onSettled;
 
   /// Called just before a mutation is executed (useful for optimistic updates).
-  final dynamic Function()? onMutate;
+  ///
+  /// Signature: `([MutationFunctionContext? context])`.
+  final void Function([MutationFunctionContext? context])? onMutate;
 
   MutationCacheConfig(
       {this.onError, this.onSuccess, this.onMutate, this.onSettled});

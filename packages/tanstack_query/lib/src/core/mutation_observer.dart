@@ -158,12 +158,20 @@ class MutationObserver<T, P> extends Subscribable<Function> {
       final onError = _mutateOptions!.onError;
       final onSettled = _mutateOptions!.onSettled;
 
+      // build context for callbacks
+      final ctx = MutationFunctionContext(
+          client: _client, mutationKey: options.mutationKey);
+
       if (action != null && action.type == MutationActionType.success) {
-        onSuccess?.call(action.data);
-        onSettled?.call(action.data, null);
+        try {
+          onSuccess?.call(action.data, ctx);
+          onSettled?.call(action.data, null, ctx);
+        } catch (_) {}
       } else if (action != null && action.type == MutationActionType.error) {
-        onError?.call(action.error);
-        onSettled?.call(null, action.error);
+        try {
+          onError?.call(action.error, ctx);
+          onSettled?.call(null, action.error, ctx);
+        } catch (_) {}
       }
     }
 

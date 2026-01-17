@@ -22,21 +22,34 @@ class MutationAction<T> {
 
 /// Per-mutation call options passed to `mutate`.
 class MutateOptions<T> {
-  final void Function(T?)? onSuccess;
-  final void Function(Object?)? onError;
-  final void Function(T?, Object?)? onSettled;
+  final void Function(T?, [MutationFunctionContext? context])? onSuccess;
+  final void Function(Object?, [MutationFunctionContext? context])? onError;
+  final void Function(T?, Object?, [MutationFunctionContext? context])?
+      onSettled;
 
   MutateOptions({this.onSuccess, this.onError, this.onSettled});
+}
+
+/// Context object provided to mutation callbacks.
+/// Contains the `client` and an optional `mutationKey` which is the
+/// serialized cache-key produced by `queryKeyToCacheKey` when a
+/// `mutationKey` list is supplied to `useMutation`.
+class MutationFunctionContext {
+  final QueryClient client;
+  final List<Object>? mutationKey;
+
+  MutationFunctionContext({required this.client, this.mutationKey});
 }
 
 /// Options used to create a Mutation/Observer.
 class MutationOptions<T, P> {
   final Future<T> Function(P) mutationFn;
-  final dynamic mutationKey;
+  final List<Object>? mutationKey;
   final void Function()? onMutate;
-  final void Function(T?)? onSuccess;
-  final void Function(Object?)? onError;
-  final void Function(T?, Object?)? onSettled;
+  final void Function(T?, [MutationFunctionContext? context])? onSuccess;
+  final void Function(Object?, [MutationFunctionContext? context])? onError;
+  final void Function(T?, Object?, [MutationFunctionContext? context])?
+      onSettled;
 
   /// Retry configuration: can be `bool` (true = infinite), `int` (max attempts),
   /// or a function `(failureCount, error) => bool`.
@@ -125,6 +138,15 @@ class Mutation<T, P> extends Removable {
       options.onMutate?.call();
     } catch (_) {}
 
+    // Build simple context object for callbacks
+    final ctx = MutationFunctionContext(
+        client: client, mutationKey: options.mutationKey);
+
+    // Call cache-level onMutate with context
+    try {
+      client.mutationCache.config.onMutate?.call(ctx);
+    } catch (_) {}
+
     // Reset failure tracking when starting
     state = MutationState<T>(null, MutationStatus.pending, null,
         failureCount: 0, failureReason: null);
@@ -156,15 +178,17 @@ class Mutation<T, P> extends Removable {
           failureCount: 0, failureReason: null);
       _notifyObservers(MutationAction.success(data));
 
-      // Per-mutation hooks
+      // Per-mutation hooks (with context)
       try {
-        options.onSuccess?.call(data);
-        options.onSettled?.call(data, null);
+        options.onSuccess?.call(data, ctx);
+        options.onSettled?.call(data, null, ctx);
       } catch (_) {}
 
-      // Global cache hooks
-      client.mutationCache.config.onSuccess?.call(data);
-      client.mutationCache.config.onSettled?.call(data, null);
+      // Global cache hooks (with context)
+      try {
+        client.mutationCache.config.onSuccess?.call(data, ctx);
+        client.mutationCache.config.onSettled?.call(data, null, ctx);
+      } catch (_) {}
 
       return data;
     } catch (e) {
@@ -175,12 +199,14 @@ class Mutation<T, P> extends Removable {
       _notifyObservers(MutationAction.error(e));
 
       try {
-        options.onError?.call(e);
-        options.onSettled?.call(null, e);
+        options.onError?.call(e, ctx);
+        options.onSettled?.call(null, e, ctx);
       } catch (_) {}
 
-      client.mutationCache.config.onError?.call(e);
-      client.mutationCache.config.onSettled?.call(null, e);
+      try {
+        client.mutationCache.config.onError?.call(e, ctx);
+        client.mutationCache.config.onSettled?.call(null, e, ctx);
+      } catch (_) {}
 
       rethrow;
     }

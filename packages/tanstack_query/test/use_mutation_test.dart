@@ -33,7 +33,8 @@ void main() {
                   await Future.delayed(Duration(milliseconds: 10));
                   return 'ok';
                 },
-                onSuccess: (data) => successData = data,
+                onSuccess: (data, [MutationFunctionContext? ctx]) =>
+                    successData = data,
               );
 
               holder.value = result;
@@ -76,7 +77,7 @@ void main() {
                   await Future.delayed(Duration(milliseconds: 10));
                   throw Exception('boom');
                 },
-                onError: (e) => errorObj = e,
+                onError: (e, [MutationFunctionContext? ctx]) => errorObj = e,
               );
 
               holder.value = result;

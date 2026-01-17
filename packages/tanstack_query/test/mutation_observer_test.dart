@@ -22,7 +22,7 @@ void main() {
           await Future.delayed(Duration(milliseconds: 10));
           return 'ok';
         },
-        onSuccess: (d) => successData = d,
+        onSuccess: (d, [MutationFunctionContext? ctx]) => successData = d,
       ),
     );
 
@@ -40,5 +40,27 @@ void main() {
     expect(successData, equals('ok'));
 
     unsubscribe();
+  });
+
+  test('MutationFunctionContext contains mutationKey', () async {
+    List<Object>? seenKey;
+    final keyList = ['todos', 1];
+
+    final observer = MutationObserver<String, String>(
+      client,
+      MutationOptions<String, String>(
+        mutationFn: (p) async {
+          await Future.delayed(Duration(milliseconds: 5));
+          return 'ok';
+        },
+        mutationKey: keyList,
+        onSuccess: (d, [MutationFunctionContext? ctx]) =>
+            seenKey = ctx?.mutationKey,
+      ),
+    );
+
+    final data = await observer.mutate('p');
+    expect(data, equals('ok'));
+    expect(seenKey, equals(keyList));
   });
 }
