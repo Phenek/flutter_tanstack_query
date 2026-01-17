@@ -49,6 +49,8 @@ class CreateTodo extends HookWidget {
 }
 ```
 
+> Tip: `useMutation` accepts an optional `mutationKey` parameter (a `List<Object>`) that uniquely identifies the mutation. If provided, it will be serialized to a cache key string and made available through the `MutationFunctionContext` passed to lifecycle callbacks (`onMutate`, `onSuccess`, `onError`, `onSettled`).
+
 [//]: # 'Example'
 
 A mutation can only be in one of the following states at any given moment:

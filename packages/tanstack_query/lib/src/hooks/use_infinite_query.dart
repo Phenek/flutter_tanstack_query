@@ -126,15 +126,11 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
     final unsubscribe = observer.subscribe((InfiniteQueryResult<T> res) {
       try {
         state.value = res;
-        print(
-            'useInfiniteQuery - status ${state.value.status} value: ${state.value}');
       } catch (_) {}
     });
 
     return () {
       unsubscribe();
-      print(
-          'dispose useInfiniteQuery - status ${state.value.status} value: ${state.value}');
     };
   }, [observer, cacheKey]);
 

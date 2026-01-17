@@ -39,8 +39,11 @@ class CheckTodoApi {
     final todo = await TodoStore.getById(checkForm.id);
     if (todo == null) throw Exception('Todo not found: id=${checkForm.id}');
 
-    final updated =
-        Todo(id: todo.id, title: todo.title, completed: checkForm.check);
+    final updated = Todo(
+      id: todo.id,
+      title: todo.title,
+      completed: checkForm.check,
+    );
     final result = await TodoStore.update(updated);
 
     if (result == null) {
@@ -83,10 +86,11 @@ class GetAllTodosApi {
     final items = await TodoStore.getAll(pagination);
     final totalPages = (total / pagination.size).ceil();
     return PaginatedTodos(
-        items: items,
-        page: pagination.number,
-        limit: pagination.size,
-        totalCount: total,
-        totalPages: totalPages);
+      items: items,
+      page: pagination.number,
+      limit: pagination.size,
+      totalCount: total,
+      totalPages: totalPages,
+    );
   }
 }

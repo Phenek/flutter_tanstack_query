@@ -53,8 +53,6 @@ class QueryObserver<TQueryFnData, TError, TData>
 
     // If queryKey changed or it transitioned from disabled->enabled, trigger a refetch
     if (prevKey != nextKey || (!prevEnabled && nextEnabled)) {
-      debugPrint(
-          'QueryObserver.setOptions: key changed from $prevKey -> $nextKey; triggering refetch');
       refetch();
     }
   }
@@ -136,28 +134,17 @@ class QueryObserver<TQueryFnData, TError, TData>
 
     try {
       // Bound the fetch with a timeout so observers don't wait forever
-      try {
-        await _query!.fetch().timeout(Duration(seconds: 4), onTimeout: () {
-          debugPrint('QueryObserver.refetch TIMEOUT for $cacheKey');
-          return null;
-        });
-        debugPrint('QueryObserver.refetch fetch completed for $cacheKey');
-      } catch (e) {
-        debugPrint(
-            'QueryObserver.refetch fetch error (caught) for $cacheKey -> $e');
-      }
-
+      await _query!.fetch().timeout(Duration(seconds: 4), onTimeout: () {
+        return null;
+      });
       _currentEntry = _client.queryCache[cacheKey];
     } catch (e) {
-      debugPrint('QueryObserver.refetch fetch error for $cacheKey -> $e');
       _currentEntry = _client.queryCache[cacheKey];
       if (throwOnError == true) rethrow;
     } finally {
       _updateResult();
       _notify();
     }
-
-    debugPrint('QueryObserver.refetch DONE for $cacheKey');
     return _currentResult;
   }
 

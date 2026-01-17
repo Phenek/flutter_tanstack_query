@@ -6,16 +6,16 @@ class Todo {
   const Todo({required this.id, required this.title, this.completed = false});
 
   factory Todo.fromJson(Map<String, dynamic> json) => Todo(
-        id: json['id'] as int,
-        title: json['title'] as String,
-        completed: json['completed'] as bool? ?? false,
-      );
+    id: json['id'] as int,
+    title: json['title'] as String,
+    completed: json['completed'] as bool? ?? false,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'completed': completed,
-      };
+    'id': id,
+    'title': title,
+    'completed': completed,
+  };
 }
 
 class PaginatedTodos {
@@ -25,18 +25,19 @@ class PaginatedTodos {
   final int totalCount;
   final int totalPages;
 
-  const PaginatedTodos(
-      {required this.items,
-      required this.page,
-      required this.limit,
-      required this.totalCount,
-      required this.totalPages});
+  const PaginatedTodos({
+    required this.items,
+    required this.page,
+    required this.limit,
+    required this.totalCount,
+    required this.totalPages,
+  });
 
   Map<String, dynamic> toJson() => {
-        'items': items.map((t) => t.toJson()).toList(),
-        'page': page,
-        'limit': limit,
-        'totalCount': totalCount,
-        'totalPages': totalPages,
-      };
+    'items': items.map((t) => t.toJson()).toList(),
+    'page': page,
+    'limit': limit,
+    'totalCount': totalCount,
+    'totalPages': totalPages,
+  };
 }

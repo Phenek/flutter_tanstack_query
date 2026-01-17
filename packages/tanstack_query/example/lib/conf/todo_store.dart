@@ -48,8 +48,11 @@ class TodoStore {
   }
 
   static Future<Todo> create(Todo todo) async {
-    final newTodo =
-        Todo(id: _nextId++, title: todo.title, completed: todo.completed);
+    final newTodo = Todo(
+      id: _nextId++,
+      title: todo.title,
+      completed: todo.completed,
+    );
     _todos.add(newTodo);
     return newTodo;
   }
@@ -57,8 +60,11 @@ class TodoStore {
   static Future<Todo?> update(Todo todo) async {
     final idx = _todos.indexWhere((t) => t.id == todo.id);
     if (idx == -1) return null;
-    final updated =
-        Todo(id: todo.id, title: todo.title, completed: todo.completed);
+    final updated = Todo(
+      id: todo.id,
+      title: todo.title,
+      completed: todo.completed,
+    );
     _todos[idx] = updated;
     return updated;
   }

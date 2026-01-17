@@ -28,14 +28,16 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 ///   `(attempt, error) => int` that returns the delay in ms.
 /// - [gcTime]: Garbage-collection time in milliseconds for this mutation's
 ///   state; when <= 0 GC is disabled. If omitted, the client default is used.
+/// - [mutationKey]: A `List<Object>` uniquely identifying the mutation (optional).
 ///
 /// Returns:
 /// A [MutationResult<T, P>] to trigger and observe the mutation.
 MutationResult<T, P> useMutation<T, P>(
     {required Future<T> Function(P) mutationFn,
-    void Function(T?)? onSuccess,
-    void Function(Object?)? onError,
-    void Function(T?, Object?)? onSettled,
+    List<Object>? mutationKey,
+    void Function(T?, [MutationFunctionContext? context])? onSuccess,
+    void Function(Object?, [MutationFunctionContext? context])? onError,
+    void Function(T?, Object?, [MutationFunctionContext? context])? onSettled,
     dynamic retry,
     dynamic retryDelay,
     int? gcTime}) {
@@ -47,6 +49,7 @@ MutationResult<T, P> useMutation<T, P>(
             queryClient,
             MutationOptions<T, P>(
               mutationFn: mutationFn,
+              mutationKey: mutationKey,
               onSuccess: onSuccess,
               onError: onError,
               onSettled: onSettled,
@@ -60,6 +63,7 @@ MutationResult<T, P> useMutation<T, P>(
   useEffect(() {
     observer.setOptions(MutationOptions<T, P>(
       mutationFn: mutationFn,
+      mutationKey: mutationKey,
       onSuccess: onSuccess,
       onError: onError,
       onSettled: onSettled,
@@ -71,6 +75,7 @@ MutationResult<T, P> useMutation<T, P>(
   }, [
     observer,
     mutationFn,
+    mutationKey,
     onSuccess,
     onError,
     onSettled,

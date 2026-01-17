@@ -7,7 +7,7 @@ import 'package:internet_connection_checker_plus/internet_connection_checker_plu
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   var queryClient = QueryClient(
     defaultOptions: const DefaultOptions(
       queries: QueryDefaultOptions(
@@ -18,9 +18,14 @@ void main() {
       ),
     ),
     queryCache: QueryCache(
-        config: QueryCacheConfig(onError: (e) => debugPrint(e.toString()))),
+      config: QueryCacheConfig(onError: (e) => debugPrint(e.toString())),
+    ),
     mutationCache: MutationCache(
-        config: MutationCacheConfig(onError: (e) => debugPrint(e.toString()))),
+      config: MutationCacheConfig(
+        onError: (e, [MutationFunctionContext? context]) =>
+            debugPrint(e.toString()),
+      ),
+    ),
   );
 
   InternetConnection connectivity = InternetConnection();
@@ -33,17 +38,19 @@ void main() {
     }
   });
 
-  AppLifecycleListener(onResume: () {
-    focusManager.setFocused(true);
-  }, onInactive: () {
-    focusManager.setFocused(false);
-  }, onPause: () {
-    focusManager.setFocused(false);
-  });
-
-  runApp(
-    QueryClientProvider(client: queryClient, child: const App()),
+  AppLifecycleListener(
+    onResume: () {
+      focusManager.setFocused(true);
+    },
+    onInactive: () {
+      focusManager.setFocused(false);
+    },
+    onPause: () {
+      focusManager.setFocused(false);
+    },
   );
+
+  runApp(QueryClientProvider(client: queryClient, child: const App()));
 }
 
 class App extends HookWidget {
@@ -57,9 +64,7 @@ class App extends HookWidget {
       title: 'tanstack_query Example',
       theme: ThemeData(primarySwatch: Colors.blue),
       home: Scaffold(
-        body: SafeArea(
-          child: content.value,
-        ),
+        body: SafeArea(child: content.value),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: content.value is TodosPage ? 0 : 1,
           onTap: (index) {

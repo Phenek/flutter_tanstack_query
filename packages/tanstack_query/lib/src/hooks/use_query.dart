@@ -112,18 +112,11 @@ QueryResult<T> useQuery<T>(
     final unsubscribe = observer.subscribe((QueryResult<T> res) {
       try {
         state.value = res;
-        print('useQuery - status ${state.value.status} value: ${state.value}');
       } catch (_) {}
     });
 
-    // initialize
-    // state.value = observer.getCurrentResult();
-    // print('initialize useQuery - status ${state.value.status} value: ${state.value}');
-
     return () {
       unsubscribe();
-      print(
-          'dispose useQuery - status ${state.value.status} value: ${state.value}');
     };
   }, [observer, cacheKey]);
 

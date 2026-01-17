@@ -33,14 +33,12 @@ class TodosPage extends HookWidget {
         ),
       );
     }
-
     //Is Error
     else if (getAllTodosQuery.isError ||
         getAllTodosQuery.status == QueryStatus.error) {
       final err = getAllTodosQuery.error;
       content = Center(child: Text('Error: ${err ?? 'unknown'}'));
     }
-
     //Is Success
     else if (getAllTodosQuery.isSuccess) {
       final paginated = getAllTodosQuery.data;
@@ -56,9 +54,7 @@ class TodosPage extends HookWidget {
           itemCount: items.length,
           itemBuilder: (ctx, i) {
             final todo = items[i];
-            return TodoCard(
-              todo: todo,
-            );
+            return TodoCard(todo: todo);
           },
         );
       }
@@ -76,15 +72,20 @@ class TodosPage extends HookWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Todo List',
-                            style: TextStyle(
-                                fontSize: 26, fontWeight: FontWeight.bold)),
+                        Text(
+                          'Todo List',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           _getLabelInfo(
-                              context,
-                              getAllTodosQuery.data?.totalCount ?? 0,
-                              page.value),
+                            context,
+                            getAllTodosQuery.data?.totalCount ?? 0,
+                            page.value,
+                          ),
                           style: const TextStyle(color: Colors.black54),
                         ),
                       ],
@@ -96,9 +97,12 @@ class TodosPage extends HookWidget {
                       if (getAllTodosQuery.isFetching) return;
 
                       page.value = Pagination(
-                          number: (page.value.number - 1)
-                              .clamp(1, getAllTodosQuery.data?.totalPages ?? 2),
-                          size: page.value.size);
+                        number: (page.value.number - 1).clamp(
+                          1,
+                          getAllTodosQuery.data?.totalPages ?? 2,
+                        ),
+                        size: page.value.size,
+                      );
                     },
                     icon: const Icon(Icons.chevron_left),
                     tooltip: 'Previous page',
@@ -109,9 +113,12 @@ class TodosPage extends HookWidget {
                       if (getAllTodosQuery.isFetching) return;
 
                       page.value = Pagination(
-                          number: (page.value.number + 1)
-                              .clamp(1, getAllTodosQuery.data?.totalPages ?? 2),
-                          size: page.value.size);
+                        number: (page.value.number + 1).clamp(
+                          1,
+                          getAllTodosQuery.data?.totalPages ?? 2,
+                        ),
+                        size: page.value.size,
+                      );
                     },
                     icon: const Icon(Icons.chevron_right),
                     tooltip: 'Next page',
@@ -125,18 +132,17 @@ class TodosPage extends HookWidget {
             ],
           ),
         ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: FloatingButton(),
-        ),
+        Positioned(right: 16, bottom: 16, child: FloatingButton()),
       ],
     );
   }
 }
 
 String _getLabelInfo(
-    BuildContext context, int totalRows, Pagination pagination) {
+  BuildContext context,
+  int totalRows,
+  Pagination pagination,
+) {
   if (pagination.size > 0 && totalRows > 0) {
     final lastPossibleIndexInPage = pagination.number * pagination.size;
     final firstItemIndexInPage = lastPossibleIndexInPage - pagination.size + 1;

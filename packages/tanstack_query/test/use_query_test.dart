@@ -751,4 +751,60 @@ void main() {
 
     expect(queryClient.queryCache.containsKey(cacheKey), isFalse);
   });
+
+  testWidgets('setQueryData should update all useQuery observers with same key',
+      (WidgetTester tester) async {
+    final holderA = ValueNotifier<QueryResult<int>?>(null);
+    final holderB = ValueNotifier<QueryResult<int>?>(null);
+    final keyList = ['set-query-data'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: queryClient,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final resA = useQuery<int>(
+              queryKey: keyList,
+              queryFn: () async {
+                await Future.delayed(Duration(milliseconds: 5));
+                return 1;
+              },
+            );
+            final resB = useQuery<int>(
+              queryKey: keyList,
+              queryFn: () async {
+                await Future.delayed(Duration(milliseconds: 5));
+                return 1;
+              },
+            );
+
+            holderA.value = resA;
+            holderB.value = resB;
+
+            return Column(children: [Container(), Container()]);
+          }),
+        )));
+
+    // wait initial fetch
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(holderA.value!.status, equals(QueryStatus.success));
+    expect(holderB.value!.status, equals(QueryStatus.success));
+    expect(holderA.value!.data, equals(1));
+    expect(holderB.value!.data, equals(1));
+
+    // change data via client helper
+    queryClient.setQueryData<int>(keyList, (old) => 42);
+
+    // allow cache notification to propagate
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(holderA.value!.data, equals(42));
+    expect(holderB.value!.data, equals(42));
+
+    final cached = queryClient.queryCache[cacheKey]!.result as QueryResult<int>;
+    expect(cached.data, equals(42));
+  });
 }

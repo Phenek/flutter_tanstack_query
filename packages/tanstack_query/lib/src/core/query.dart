@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 import 'removable.dart';
 
@@ -111,7 +110,6 @@ class Query<T> extends Removable {
 
     // Wrap retryer.start() in a TrackedFuture so other code can inspect queryFnRunning
     running = TrackedFuture<T>(_retryer!.start());
-    debugPrint('TrackedFuture created for $cacheKey');
     client.queryCache[cacheKey] =
         QueryCacheEntry<T>(pending, DateTime.now(), queryFnRunning: running);
     _notifyObservers();

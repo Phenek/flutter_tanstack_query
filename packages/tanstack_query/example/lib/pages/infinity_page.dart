@@ -18,7 +18,8 @@ class InfinityPage extends HookWidget {
     final infiniteTodos = useInfiniteQuery<PaginatedTodos>(
       queryKey: ["Infinite", GetAllTodosApi.name, page.value.size],
       queryFn: (int pageParam) => GetAllTodosApi.request(
-          Pagination(number: pageParam, size: page.value.size)),
+        Pagination(number: pageParam, size: page.value.size),
+      ),
       initialPageParam: page.value.number,
       getNextPageParam: (last) =>
           (last.page < last.totalPages) ? last.page + 1 : 0,
@@ -68,53 +69,61 @@ class InfinityPage extends HookWidget {
     final items =
         infiniteTodos.data?.expand((p) => p.items).toList() ?? <Todo>[];
 
-    return Stack(children: [
-      Column(children: [
-        // title
+    return Stack(
+      children: [
         Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Infinite List',
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(
-              "Displayed pages: ${infiniteTodos.data?.isNotEmpty == true ? infiniteTodos.data!.last.page : 1}",
-              style: const TextStyle(color: Colors.black54),
+            // title
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Infinite List',
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  "Displayed pages: ${infiniteTodos.data?.isNotEmpty == true ? infiniteTodos.data!.last.page : 1}",
+                  style: const TextStyle(color: Colors.black54),
+                ),
+              ],
             ),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.all(12),
+                itemCount:
+                    items.length + (infiniteTodos.isFetchingNextPage ? 1 : 0),
+                itemBuilder: (context, index) {
+                  // render loader at the end while next page is loading
+                  if (index >= items.length) {
+                    if (infiniteTodos.isFetching) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(),
+                          ),
+                        ),
+                      );
+                    } else {
+                      return const SizedBox.shrink();
+                    }
+                  }
+
+                  final todo = items[index];
+                  return TodoCard(todo: todo);
+                },
+              ),
+            ),
+            // content area
+            if (content != null) Expanded(child: content),
           ],
         ),
-        Expanded(
-            child: ListView.builder(
-          controller: scrollController,
-          padding: const EdgeInsets.all(12),
-          itemCount: items.length + (infiniteTodos.isFetchingNextPage ? 1 : 0),
-          itemBuilder: (context, index) {
-            // render loader at the end while next page is loading
-            if (index >= items.length) {
-              if (infiniteTodos.isFetching) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Center(
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(),
-                    ),
-                  ),
-                );
-              } else {
-                return const SizedBox.shrink();
-              }
-            }
-
-            final todo = items[index];
-            return TodoCard(todo: todo);
-          },
-        )),
-        // content area
-        if (content != null) Expanded(child: content),
-      ]),
-      Positioned(right: 16, bottom: 16, child: FloatingButton()),
-    ]);
+        Positioned(right: 16, bottom: 16, child: FloatingButton()),
+      ],
+    );
   }
 }

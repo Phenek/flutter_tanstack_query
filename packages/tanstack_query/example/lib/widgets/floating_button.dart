@@ -17,12 +17,14 @@ class FloatingButton extends HookWidget {
 
     final addTodoMutation = useMutation(
       mutationFn: (Todo body) => CreateTodoApi.request(body),
-      onSuccess: (created) {
+      onSuccess: (created, [MutationFunctionContext? ctx]) {
         // invalidate the todos list so it refetches with the new item
-        queryClient
-            .invalidateQueries(queryKey: ["Infinite", GetAllTodosApi.name]);
-        queryClient
-            .invalidateQueries(queryKey: ["Classical", GetAllTodosApi.name]);
+        queryClient.invalidateQueries(
+          queryKey: ["Infinite", GetAllTodosApi.name],
+        );
+        queryClient.invalidateQueries(
+          queryKey: ["Classical", GetAllTodosApi.name],
+        );
       },
     );
 
@@ -47,8 +49,9 @@ class FloatingButton extends HookWidget {
                       final text = controller.text.trim();
                       if (text.isEmpty) return;
                       // call the internal mutation on submit
-                      addTodoMutation
-                          .mutate(Todo(id: 0, title: text, completed: false));
+                      addTodoMutation.mutate(
+                        Todo(id: 0, title: text, completed: false),
+                      );
                       Navigator.of(ctx).pop();
                     },
                   ),
@@ -56,18 +59,21 @@ class FloatingButton extends HookWidget {
               ),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('Close')),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Close'),
+                ),
                 ElevatedButton(
-                    onPressed: () async {
-                      final title = controller.text.trim();
-                      if (title.isEmpty) return;
-                      // mutate here — backend/store will assign the id
-                      addTodoMutation
-                          .mutate(Todo(id: 0, title: title, completed: false));
-                      Navigator.of(ctx).pop();
-                    },
-                    child: const Text('Confirm'))
+                  onPressed: () async {
+                    final title = controller.text.trim();
+                    if (title.isEmpty) return;
+                    // mutate here — backend/store will assign the id
+                    addTodoMutation.mutate(
+                      Todo(id: 0, title: title, completed: false),
+                    );
+                    Navigator.of(ctx).pop();
+                  },
+                  child: const Text('Confirm'),
+                ),
               ],
             );
           },

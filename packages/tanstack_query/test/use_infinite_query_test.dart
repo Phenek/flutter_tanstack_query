@@ -809,4 +809,114 @@ void main() {
 
     expect(client.queryCache.containsKey(cacheKey), isFalse);
   });
+
+  testWidgets(
+      'should ignore cache when cached infinite result has mismatched generic type',
+      (WidgetTester tester) async {
+    final keyList = ['infinite', 'mismatch'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+    final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
+
+    // put an InfiniteQueryResult<Object> into the cache
+    client.queryCache[cacheKey] = QueryCacheEntry(
+      InfiniteQueryResult<Object>(
+          key: cacheKey,
+          status: QueryStatus.success,
+          data: <Object>[Object()],
+          isFetching: false,
+          error: null,
+          isFetchingNextPage: false),
+      DateTime.now(),
+    );
+
+    // Mount the widget that uses a different generic type for the same key
+    await tester.pumpWidget(QueryClientProvider(
+        client: client,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final result = useInfiniteQuery<int>(
+              queryKey: keyList,
+              queryFn: (page) async {
+                await Future.delayed(Duration(milliseconds: 5));
+                return 1;
+              },
+              initialPageParam: 1,
+            );
+
+            holder.value = result;
+            return Container();
+          }),
+        )));
+
+    // There should be no TypeError thrown during build
+    final exception = tester.takeException();
+    expect(exception, isNull);
+
+    // The observer should ignore the mismatched cache entry and perform a fetch
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(holder.value!.status, equals(QueryStatus.success));
+    expect(holder.value!.data, equals([1]));
+  });
+
+  testWidgets(
+      'setQueryInfiniteData should update all useInfiniteQuery observers with same key',
+      (WidgetTester tester) async {
+    final holderA = ValueNotifier<InfiniteQueryResult<int>?>(null);
+    final holderB = ValueNotifier<InfiniteQueryResult<int>?>(null);
+    final keyList = ['infinite', 'set-query-infinite-data'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: client,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final resA = useInfiniteQuery<int>(
+              queryKey: keyList,
+              queryFn: (page) async {
+                await Future.delayed(Duration(milliseconds: 5));
+                return page;
+              },
+              initialPageParam: 1,
+            );
+            final resB = useInfiniteQuery<int>(
+              queryKey: keyList,
+              queryFn: (page) async {
+                await Future.delayed(Duration(milliseconds: 5));
+                return page;
+              },
+              initialPageParam: 1,
+            );
+
+            holderA.value = resA;
+            holderB.value = resB;
+
+            return Column(children: [Container(), Container()]);
+          }),
+        )));
+
+    // wait initial fetch
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(holderA.value!.status, equals(QueryStatus.success));
+    expect(holderB.value!.status, equals(QueryStatus.success));
+    expect(holderA.value!.data, equals([1]));
+    expect(holderB.value!.data, equals([1]));
+
+    // change data via client helper
+    client.setQueryInfiniteData<int>(keyList, (old) => <int>[42]);
+
+    // allow cache notification to propagate
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(holderA.value!.data, equals([42]));
+    expect(holderB.value!.data, equals([42]));
+
+    final cached =
+        client.queryCache[cacheKey]!.result as InfiniteQueryResult<int>;
+    expect(cached.data, equals([42]));
+  });
 }

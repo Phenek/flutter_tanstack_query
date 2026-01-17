@@ -107,6 +107,37 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
     _options = options;
   }
 
+  /// Try to safely cast an untyped [InfiniteQueryResult] (often coming from
+  /// the cache) into a typed [InfiniteQueryResult<T>]. If the underlying
+  /// data cannot be cast to `T` this returns `null` so the observer can
+  /// treat the cache entry as absent instead of throwing a [TypeError].
+  InfiniteQueryResult<T>? _tryCastInfiniteQueryResult(
+      dynamic raw, void Function()? fetchNextPageCallback) {
+    if (raw is! InfiniteQueryResult) return null;
+    try {
+      final List<T> data =
+          raw.data == null ? <T>[] : (raw.data as List).cast<T>();
+      final q = InfiniteQueryResult<T>(
+        key: raw.key,
+        status: raw.status,
+        data: data,
+        isFetching: raw.isFetching,
+        error: raw.error,
+        isFetchingNextPage: raw.isFetchingNextPage,
+      );
+      try {
+        q.failureCount = raw.failureCount;
+        q.failureReason = raw.failureReason;
+      } catch (_) {}
+      q.fetchNextPage = fetchNextPageCallback ?? () {};
+      return q;
+    } catch (e) {
+      debugPrint(
+          'DBG: unable to cast cached InfiniteQueryResult to typed variant: $e');
+      return null;
+    }
+  }
+
   @override
   void onSubscribe() {
     // Delegate mount-time fetching policy to shouldFetchOnMount to match
@@ -165,7 +196,8 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
         cacheEntry.queryFnRunning == null ||
         cacheEntry.queryFnRunning!.isCompleted ||
         cacheEntry.queryFnRunning!.hasError) {
-      final prevRes = cacheEntry?.result as InfiniteQueryResult<T>?;
+      final prevRes = _tryCastInfiniteQueryResult(
+          cacheEntry?.result, () => fetchNextPage());
 
       // Determine whether there is real cached data (do NOT treat observer
       // placeholder data as cache data — placeholder should not be persisted).
@@ -434,43 +466,53 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
 
     // If cache entry exists, prefer it (and possibly use placeholderData when empty)
     if (cacheEntry != null && cacheEntry.result is InfiniteQueryResult) {
-      final raw = cacheEntry.result as InfiniteQueryResult<T>;
+      final rawCasted =
+          _tryCastInfiniteQueryResult(cacheEntry.result, () => fetchNextPage());
 
-      // Track last query with defined data
-      if (raw.data?.isNotEmpty == true) {
-        _lastQueryWithDefinedData = null; // nothing useful to attach here
-      }
+      // If we couldn't cast the cached result to the expected generic type,
+      // treat it as if there was no cache entry to avoid runtime type errors.
+      if (rawCasted == null) {
+        debugPrint(
+            'DBG: skipping cache entry due to type mismatch for key=$cacheKey');
+      } else {
+        final raw = rawCasted;
 
-      // If there's no real data but placeholderData is provided, use it
-      if ((raw.data?.isEmpty ?? true) && _options.placeholderData != null) {
-        dynamic placeholderData;
-        if (_currentResult.isPlaceholderData &&
-            _options.placeholderData == _lastPlaceholderDataOption) {
-          placeholderData = _currentResult.data;
-        } else {
-          placeholderData = _options.resolvePlaceholderPages(
-              _lastQueryWithDefinedData?.entry?.result?.data,
-              _lastQueryWithDefinedData);
+        // Track last query with defined data
+        if (raw.data?.isNotEmpty == true) {
+          _lastQueryWithDefinedData = null; // nothing useful to attach here
         }
 
-        if (placeholderData != null && placeholderData is List<T>) {
-          _currentResult = InfiniteQueryResult<T>(
-              key: queryKeyToCacheKey(_options.queryKey),
-              status: QueryStatus.success,
-              data: placeholderData,
-              isFetching: false,
-              error: null,
-              isFetchingNextPage: false);
-          _currentResult.fetchNextPage = () => fetchNextPage();
-          _currentResult.isPlaceholderData = true;
-          _lastPlaceholderDataOption = _options.placeholderData;
-          return;
-        }
-      }
+        // If there's no real data but placeholderData is provided, use it
+        if ((raw.data?.isEmpty ?? true) && _options.placeholderData != null) {
+          dynamic placeholderData;
+          if (_currentResult.isPlaceholderData &&
+              _options.placeholderData == _lastPlaceholderDataOption) {
+            placeholderData = _currentResult.data;
+          } else {
+            placeholderData = _options.resolvePlaceholderPages(
+                _lastQueryWithDefinedData?.entry?.result?.data,
+                _lastQueryWithDefinedData);
+          }
 
-      _currentResult = raw;
-      _currentResult.fetchNextPage = () => fetchNextPage();
-      return;
+          if (placeholderData != null && placeholderData is List<T>) {
+            _currentResult = InfiniteQueryResult<T>(
+                key: queryKeyToCacheKey(_options.queryKey),
+                status: QueryStatus.success,
+                data: placeholderData,
+                isFetching: false,
+                error: null,
+                isFetchingNextPage: false);
+            _currentResult.fetchNextPage = () => fetchNextPage();
+            _currentResult.isPlaceholderData = true;
+            _lastPlaceholderDataOption = _options.placeholderData;
+            return;
+          }
+        }
+
+        _currentResult = raw;
+        _currentResult.fetchNextPage = () => fetchNextPage();
+        return;
+      }
     }
 
     // No cache entry: if initialData is provided, seed it into the observer and cache
@@ -551,65 +593,69 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
         _notify();
       } else if (event.type == QueryCacheEventType.added ||
           event.type == QueryCacheEventType.updated) {
-        final dynamic raw = event.entry?.result;
-        if (raw is InfiniteQueryResult<T>) {
-          // If no data but placeholderData is provided, try to use it
-          if ((raw.data?.isEmpty ?? true) && _options.placeholderData != null) {
-            dynamic placeholderData;
-            if (_currentResult.isPlaceholderData &&
-                _options.placeholderData == _lastPlaceholderDataOption) {
-              placeholderData = _currentResult.data;
-            } else {
-              try {
-                if (_options.placeholderData is PlaceholderDataFn<List<T>>) {
-                  placeholderData = (_options.placeholderData
-                      as PlaceholderDataFn<List<T>>)(null, null);
-                } else {
-                  placeholderData = _options.placeholderData as List<T>?;
-                }
-              } catch (_) {
-                placeholderData = null;
-              }
-            }
+        // Use the safe casting helper to avoid TypeError on generic mismatches
+        final dynamic rawEntry = event.entry?.result;
+        final raw =
+            _tryCastInfiniteQueryResult(rawEntry, () => fetchNextPage());
+        if (raw == null) return;
 
-            if (placeholderData != null && placeholderData is List<T>) {
-              final q = InfiniteQueryResult<T>(
-                  key: queryKeyToCacheKey(_options.queryKey),
-                  status: QueryStatus.success,
-                  data: placeholderData,
-                  isFetching: raw.isFetching,
-                  error: raw.error,
-                  isFetchingNextPage: raw.isFetchingNextPage);
-              // Preserve failure metadata from cache entry
-              try {
-                q.failureCount = raw.failureCount;
-                q.failureReason = raw.failureReason;
-              } catch (_) {}
-              q.fetchNextPage = () => fetchNextPage();
-              q.isPlaceholderData = true;
-              _lastPlaceholderDataOption = _options.placeholderData;
-              _currentResult = q;
-              _notify();
-              return;
+        // If no data but placeholderData is provided, try to use it
+        if ((raw.data?.isEmpty ?? true) && _options.placeholderData != null) {
+          dynamic placeholderData;
+          if (_currentResult.isPlaceholderData &&
+              _options.placeholderData == _lastPlaceholderDataOption) {
+            placeholderData = _currentResult.data;
+          } else {
+            try {
+              if (_options.placeholderData is PlaceholderDataFn<List<T>>) {
+                placeholderData = (_options.placeholderData
+                    as PlaceholderDataFn<List<T>>)(null, null);
+              } else {
+                placeholderData = _options.placeholderData as List<T>?;
+              }
+            } catch (_) {
+              placeholderData = null;
             }
           }
 
-          final q = InfiniteQueryResult<T>(
-              key: queryKeyToCacheKey(_options.queryKey),
-              status: raw.status,
-              data: raw.data as List<T>,
-              isFetching: raw.isFetching,
-              error: raw.error,
-              isFetchingNextPage: raw.isFetchingNextPage);
-          // Preserve failure metadata from cache entry
-          try {
-            q.failureCount = raw.failureCount;
-            q.failureReason = raw.failureReason;
-          } catch (_) {}
-          q.fetchNextPage = () => fetchNextPage();
-          _currentResult = q;
-          _notify();
+          if (placeholderData != null && placeholderData is List<T>) {
+            final q = InfiniteQueryResult<T>(
+                key: queryKeyToCacheKey(_options.queryKey),
+                status: QueryStatus.success,
+                data: placeholderData,
+                isFetching: raw.isFetching,
+                error: raw.error,
+                isFetchingNextPage: raw.isFetchingNextPage);
+            // Preserve failure metadata from cache entry
+            try {
+              q.failureCount = raw.failureCount;
+              q.failureReason = raw.failureReason;
+            } catch (_) {}
+            q.fetchNextPage = () => fetchNextPage();
+            q.isPlaceholderData = true;
+            _lastPlaceholderDataOption = _options.placeholderData;
+            _currentResult = q;
+            _notify();
+            return;
+          }
         }
+
+        // Use the safely casted raw value directly
+        final q = InfiniteQueryResult<T>(
+            key: queryKeyToCacheKey(_options.queryKey),
+            status: raw.status,
+            data: raw.data ?? <T>[],
+            isFetching: raw.isFetching,
+            error: raw.error,
+            isFetchingNextPage: raw.isFetchingNextPage);
+        // Preserve failure metadata from cache entry
+        try {
+          q.failureCount = raw.failureCount;
+          q.failureReason = raw.failureReason;
+        } catch (_) {}
+        q.fetchNextPage = () => fetchNextPage();
+        _currentResult = q;
+        _notify();
       } else if (event.type == QueryCacheEventType.refetch ||
           (event.type == QueryCacheEventType.refetchOnWindowFocus &&
               (_options.refetchOnWindowFocus ??
@@ -635,8 +681,8 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
       final cacheKey = queryKeyToCacheKey(_options.queryKey);
       // loading...
       // Preserve previous data (including placeholder) while refetching pages
-      final prevRes =
-          _client.queryCache[cacheKey]?.result as InfiniteQueryResult<T>?;
+      final prevRes = _tryCastInfiniteQueryResult(
+          _client.queryCache[cacheKey]?.result, () => fetchNextPage());
       final bool prevHasData = prevRes?.data?.isNotEmpty == true;
       final bool localHasData = _currentResult.data?.isNotEmpty == true;
       final bool hasPrevData = prevHasData || localHasData;
@@ -716,12 +762,6 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
   }
 
   void _notify() {
-    // Debug: show what we notify observers with
-    try {
-      debugPrint(
-          'DBG notify status=${_currentResult.status} failureCount=${_currentResult.failureCount}');
-    } catch (_) {}
-
     notifyAll((listener) {
       try {
         final typed = listener as void Function(InfiniteQueryResult<T>);

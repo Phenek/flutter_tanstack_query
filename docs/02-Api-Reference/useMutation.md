@@ -21,9 +21,10 @@ class MutationResult<T, P> {
 
 MutationResult<T, P> useMutation<T, P>({
   required Future<T> Function(P) mutationFn,
-  void Function(T?)? onSuccess,
-  void Function(Object?)? onError,
-  void Function(T?, Object?)? onSettled,
+  List<Object>? mutationKey,
+  void Function(T?, [MutationFunctionContext?])? onSuccess,
+  void Function(Object?, [MutationFunctionContext?])? onError,
+  void Function(T?, Object?, [MutationFunctionContext?])? onSettled,
   dynamic retry,
   dynamic retryDelay,
   int? gcTime,
@@ -36,15 +37,18 @@ MutationResult<T, P> useMutation<T, P>({
   - **Required**
   - A function that performs the mutation and returns a `Future<T>`.
   - Receives a `P` value (the mutation variables) and should return the mutation result.
-- `onSuccess: void Function(T?)?`
+- `mutationKey: List<Object>?`
   - Optional
-  - Called with the mutation result when the mutation succeeds.
-- `onError: void Function(Object?)?`
+  - A list used to uniquely identify this mutation. If provided it will be serialized to a cache key string and made available through `MutationFunctionContext.mutationKey` in lifecycle callbacks.
+- `onSuccess: void Function(T?, [MutationFunctionContext?])?`
   - Optional
-  - Called with the error when the mutation fails.
-- `onSettled: void Function(T?, Object?)?`
+  - Called with the mutation result when the mutation succeeds. Receives an optional `MutationFunctionContext` as the second argument.
+- `onError: void Function(Object?, [MutationFunctionContext?])?`
   - Optional
-  - Called when the mutation finishes either successfully or with an error.
+  - Called with the error when the mutation fails. Receives an optional `MutationFunctionContext` as the second argument.
+- `onSettled: void Function(T?, Object?, [MutationFunctionContext?])?`
+  - Optional
+  - Called when the mutation finishes either successfully or with an error. Receives an optional `MutationFunctionContext` as the third argument.
 - `retry: dynamic`
   - Optional
   - Retry configuration: `bool` (true = infinite), `int` (max attempts), or a function `(failureCount, error) => bool`.

@@ -144,14 +144,15 @@ class QueryClient {
     final oldDatas = oldEntry?.result.data as List<T>? ?? <T>[];
     final newDatas = updateFn(oldDatas);
 
-    final queryResult = InfiniteQueryResult(
-        key: cacheKey,
-        status: QueryStatus.success,
-        data: newDatas as List<Object>,
-        isFetching: false,
-        error: null,
-        isFetchingNextPage: false,
-        fetchNextPage: () async {});
+    final queryResult = InfiniteQueryResult<T>(
+      key: cacheKey,
+      status: QueryStatus.success,
+      data: newDatas,
+      isFetching: false,
+      error: null,
+      isFetchingNextPage: false,
+      fetchNextPage: () async {},
+    );
 
     // annotate dataUpdatedAt on the stored result
     try {
