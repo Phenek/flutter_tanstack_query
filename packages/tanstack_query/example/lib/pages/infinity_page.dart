@@ -21,26 +21,40 @@ class InfinityPage extends HookWidget {
         Pagination(number: pageParam, size: page.value.size),
       ),
       initialPageParam: page.value.number,
-      getNextPageParam: (last) =>
-          (last.page < last.totalPages) ? last.page + 1 : 0,
+      getNextPageParam: (last) => (last.page < last.totalPages) ? last.page + 1 : null,
     );
 
-    scrollController.addListener(() {
-      if (!scrollController.hasClients) return;
+    print('infiniteTodos: '
+      'hasData=${infiniteTodos.data!= null && infiniteTodos.data!.isNotEmpty}, '
+      'isError=${infiniteTodos.isError}, '
+      'isFetching=${infiniteTodos.isFetching}, '
+      'isFetchingNextPage=${infiniteTodos.isFetchingNextPage}, '
+      'isPending=${infiniteTodos.isPending}, '
+      'isSuccess=${infiniteTodos.isSuccess}');
 
-      if (scrollController.position.pixels >=
-          scrollController.position.maxScrollExtent - 200) {
-        if (infiniteTodos.fetchNextPage != null) {
-          infiniteTodos.fetchNextPage!();
+    useEffect(() {
+      void onScroll() {
+        if (!scrollController.hasClients) return;
+
+        if (scrollController.position.pixels >=
+            scrollController.position.maxScrollExtent - 200) {
+          if (infiniteTodos.hasNextPage &&
+              infiniteTodos.fetchNextPage != null) {
+            infiniteTodos.fetchNextPage!();
+          }
         }
       }
-    });
+
+      scrollController.addListener(onScroll);
+      return () => scrollController.removeListener(onScroll);
+    }, [scrollController, infiniteTodos.hasNextPage, infiniteTodos.fetchNextPage]);
 
     if (scrollController.hasClients &&
         scrollController.position.maxScrollExtent ==
             scrollController.position.minScrollExtent &&
         infiniteTodos.data != null &&
         infiniteTodos.data!.isNotEmpty &&
+        infiniteTodos.hasNextPage &&
         infiniteTodos.fetchNextPage != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         infiniteTodos.fetchNextPage!();
@@ -97,7 +111,7 @@ class InfinityPage extends HookWidget {
                 itemBuilder: (context, index) {
                   // render loader at the end while next page is loading
                   if (index >= items.length) {
-                    if (infiniteTodos.isFetching) {
+                    if (infiniteTodos.isFetchingNextPage) {
                       return const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12),
                         child: Center(

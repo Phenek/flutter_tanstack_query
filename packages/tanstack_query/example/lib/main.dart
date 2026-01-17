@@ -21,10 +21,7 @@ void main() {
       config: QueryCacheConfig(onError: (e) => debugPrint(e.toString())),
     ),
     mutationCache: MutationCache(
-      config: MutationCacheConfig(
-        onError: (e, [MutationFunctionContext? context]) =>
-            debugPrint(e.toString()),
-      ),
+      config: MutationCacheConfig(onError: (e, [context]) => debugPrint(e.toString())),
     ),
   );
 

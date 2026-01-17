@@ -10,6 +10,26 @@ typedef InitialDataUpdatedAtFn = int? Function();
 typedef PlaceholderDataFn<T> = T? Function(
     T? previousValue, dynamic previousQuery);
 
+/// Direction for infinite pagination fetches.
+enum FetchDirection {
+  forward,
+  backward,
+}
+
+/// Metadata passed to a fetch to indicate pagination behavior.
+class FetchMeta {
+  final FetchMore? fetchMore;
+
+  const FetchMeta({this.fetchMore});
+}
+
+/// Metadata for fetching more pages.
+class FetchMore {
+  final FetchDirection direction;
+
+  const FetchMore({required this.direction});
+}
+
 class QueryOptions<T> {
   /// Function that performs the query and returns the data as a `Future<T>`.
   final Future<T> Function() queryFn;
@@ -145,6 +165,74 @@ class QueryOptions<T> {
   }
 }
 
+/// Options specific to infinite queries.
+///
+/// Note: This extends the general `QueryOptions` so shared options such as
+/// `retry`, `retryDelay` and `retryOnMount` are available for infinite
+/// queries as well. The `queryFn` for infinite queries receives a `pageParam`.
+class InfiniteQueryOptions<T> extends QueryOptions<List<T>> {
+  /// The page-aware query function. Receives the page parameter and returns
+  /// the page data or `null`.
+  final Future<T?> Function(int pageParam) pageQueryFn;
+
+  final int initialPageParam;
+  final int? Function(T lastResult)? getNextPageParam;
+  final int? Function(T firstResult)? getPreviousPageParam;
+
+  InfiniteQueryOptions({
+    required super.queryKey,
+    required Future<T?> Function(int pageParam) queryFn,
+    required this.initialPageParam,
+    this.getNextPageParam,
+    this.getPreviousPageParam,
+    super.staleTime,
+    super.enabled,
+    super.refetchOnWindowFocus,
+    super.refetchOnReconnect,
+    super.refetchOnMount,
+    super.gcTime,
+    super.retry,
+    super.retryOnMount,
+    super.retryDelay,
+    dynamic super.initialData,
+    dynamic super.initialDataUpdatedAt,
+    dynamic super.placeholderData,
+  })  : pageQueryFn = queryFn,
+        super(
+          queryFn: () async {
+            final value = await queryFn(initialPageParam);
+            if (value == null) return <T>[];
+            return <T>[value as T];
+          },
+        );
+
+  /// Evaluate initial data for infinite queries as a list of pages.
+  List<T>? resolveInitialPages() {
+    try {
+      if (initialData is InitialDataFn<List<T>>) {
+        return (initialData as InitialDataFn<List<T>>)();
+      }
+      return initialData as List<T>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Evaluate placeholder data for infinite queries as a list of pages.
+  List<T>? resolvePlaceholderPages(
+      List<T>? previousValue, dynamic previousQuery) {
+    try {
+      if (placeholderData is PlaceholderDataFn<List<T>>) {
+        return (placeholderData as PlaceholderDataFn<List<T>>)(
+            previousValue, previousQuery);
+      }
+      return placeholderData as List<T>?;
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 /// Represents the current state of a query, including `status`, optional
 /// `data`, `error` and whether a fetch is ongoing.
 class QueryResult<T> {
@@ -187,6 +275,9 @@ class QueryResult<T> {
   /// The current status of the query.
   final QueryStatus status;
 
+  /// Metadata describing the fetch that produced this result.
+  final FetchMeta? fetchMeta;
+
   /// The key uniquely identifying this query.
   final String key;
 
@@ -202,6 +293,7 @@ class QueryResult<T> {
     this.refetch,
     this.failureCount = 0,
     this.failureReason,
+    this.fetchMeta,
   });
 }
 
@@ -209,7 +301,15 @@ class QueryResult<T> {
 /// `isFetchingNextPage` flag.
 class InfiniteQueryResult<T> extends QueryResult<List<T>> {
   bool isFetchingNextPage;
+  bool isFetchingPreviousPage;
+  bool isFetchNextPageError;
+  bool isFetchPreviousPageError;
+  bool isRefetching;
+  bool isRefetchError;
+  bool hasNextPage;
+  bool hasPreviousPage;
   Function? fetchNextPage;
+  Function? fetchPreviousPage;
 
   InfiniteQueryResult({
     required String key,
@@ -219,7 +319,30 @@ class InfiniteQueryResult<T> extends QueryResult<List<T>> {
     required Object? error,
     required this.isFetchingNextPage,
     this.fetchNextPage,
-  }) : super(key, status, data, error, isFetching: isFetching);
+    this.isFetchingPreviousPage = false,
+    this.isFetchNextPageError = false,
+    this.isFetchPreviousPageError = false,
+    this.isRefetching = false,
+    this.isRefetchError = false,
+    this.hasNextPage = false,
+    this.hasPreviousPage = false,
+    this.fetchPreviousPage,
+    bool isStale = false,
+    int? dataUpdatedAt,
+    bool isPlaceholderData = false,
+    int failureCount = 0,
+    Object? failureReason,
+    Future<QueryResult<List<T>>> Function({bool? throwOnError})? refetch,
+    FetchMeta? fetchMeta,
+  }) : super(key, status, data, error,
+            isFetching: isFetching,
+            isStale: isStale,
+            dataUpdatedAt: dataUpdatedAt,
+            isPlaceholderData: isPlaceholderData,
+            failureCount: failureCount,
+            failureReason: failureReason,
+            refetch: refetch,
+            fetchMeta: fetchMeta);
 
   InfiniteQueryResult<T> copyWith({
     String? key,
@@ -229,6 +352,21 @@ class InfiniteQueryResult<T> extends QueryResult<List<T>> {
     Object? error,
     bool? isFetchingNextPage,
     Function? fetchNextPage,
+    bool? isFetchingPreviousPage,
+    bool? isFetchNextPageError,
+    bool? isFetchPreviousPageError,
+    bool? isRefetching,
+    bool? isRefetchError,
+    bool? hasNextPage,
+    bool? hasPreviousPage,
+    Function? fetchPreviousPage,
+    bool? isStale,
+    int? dataUpdatedAt,
+    bool? isPlaceholderData,
+    int? failureCount,
+    Object? failureReason,
+    Future<QueryResult<List<T>>> Function({bool? throwOnError})? refetch,
+    FetchMeta? fetchMeta,
   }) {
     return InfiniteQueryResult<T>(
       key: key ?? this.key,
@@ -238,6 +376,41 @@ class InfiniteQueryResult<T> extends QueryResult<List<T>> {
       error: error ?? this.error,
       isFetchingNextPage: isFetchingNextPage ?? this.isFetchingNextPage,
       fetchNextPage: fetchNextPage ?? this.fetchNextPage,
+      isFetchingPreviousPage:
+          isFetchingPreviousPage ?? this.isFetchingPreviousPage,
+      isFetchNextPageError: isFetchNextPageError ?? this.isFetchNextPageError,
+      isFetchPreviousPageError:
+          isFetchPreviousPageError ?? this.isFetchPreviousPageError,
+      isRefetching: isRefetching ?? this.isRefetching,
+      isRefetchError: isRefetchError ?? this.isRefetchError,
+      hasNextPage: hasNextPage ?? this.hasNextPage,
+      hasPreviousPage: hasPreviousPage ?? this.hasPreviousPage,
+      fetchPreviousPage: fetchPreviousPage ?? this.fetchPreviousPage,
+      isStale: isStale ?? this.isStale,
+      dataUpdatedAt: dataUpdatedAt ?? this.dataUpdatedAt,
+      isPlaceholderData: isPlaceholderData ?? this.isPlaceholderData,
+      failureCount: failureCount ?? this.failureCount,
+      failureReason: failureReason ?? this.failureReason,
+      refetch: refetch ?? this.refetch,
+      fetchMeta: fetchMeta ?? this.fetchMeta,
     );
   }
+}
+
+bool hasNextPage<T>(
+  InfiniteQueryOptions<T> options,
+  List<T>? data,
+) {
+  if (options.getNextPageParam == null) return false;
+  if (data == null || data.isEmpty) return false;
+  return options.getNextPageParam!(data.last) != null;
+}
+
+bool hasPreviousPage<T>(
+  InfiniteQueryOptions<T> options,
+  List<T>? data,
+) {
+  if (options.getPreviousPageParam == null) return false;
+  if (data == null || data.isEmpty) return false;
+  return options.getPreviousPageParam!(data.first) != null;
 }

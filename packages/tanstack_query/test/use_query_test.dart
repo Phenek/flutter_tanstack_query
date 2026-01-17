@@ -58,6 +58,50 @@ void main() {
         equals('ok'));
   });
 
+  testWidgets('should share in-flight fetch for same key',
+      (WidgetTester tester) async {
+    var calls = 0;
+    final holderA = ValueNotifier<QueryResult<String>?>(null);
+    final holderB = ValueNotifier<QueryResult<String>?>(null);
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: queryClient,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final resA = useQuery<String>(
+              queryKey: ['shared-fetch'],
+              queryFn: () async {
+                calls++;
+                await Future.delayed(Duration(milliseconds: 20));
+                return 'ok';
+              },
+            );
+            final resB = useQuery<String>(
+              queryKey: ['shared-fetch'],
+              queryFn: () async {
+                calls++;
+                await Future.delayed(Duration(milliseconds: 20));
+                return 'ok';
+              },
+            );
+
+            holderA.value = resA;
+            holderB.value = resB;
+
+            return Column(children: [Container(), Container()]);
+          }),
+        )));
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, equals(1));
+    expect(holderA.value!.status, equals(QueryStatus.success));
+    expect(holderB.value!.status, equals(QueryStatus.success));
+    expect(holderA.value!.data, equals('ok'));
+    expect(holderB.value!.data, equals('ok'));
+  });
+
   testWidgets('should fetch and fail', (WidgetTester tester) async {
     final holder = ValueNotifier<QueryResult<String>?>(null);
 
@@ -526,6 +570,49 @@ void main() {
     expect(
         (queryClient.queryCache[cacheKey]!.result as QueryResult<String>).data,
         equals('fresh'));
+  });
+
+  testWidgets('staleTime 0 should not expose cached data on mount',
+      (WidgetTester tester) async {
+    final keyList = ['stale-zero-hide'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+    final holder = ValueNotifier<QueryResult<String>?>(null);
+
+    queryClient.queryCache[cacheKey] = QueryCacheEntry(
+      QueryResult<String>(cacheKey, QueryStatus.success, 'cached', null),
+      DateTime.now().subtract(Duration(milliseconds: 5)),
+    );
+
+    var called = false;
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: queryClient,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final result = useQuery<String>(
+              queryKey: keyList,
+              queryFn: () async {
+                called = true;
+                await Future.delayed(Duration(milliseconds: 5));
+                return 'fresh';
+              },
+              staleTime: 0,
+            );
+
+            holder.value = result;
+            return Container();
+          }),
+        )));
+
+    await tester.pump();
+    expect(holder.value!.status, equals(QueryStatus.pending));
+    expect(holder.value!.data, isNull);
+
+    await tester.pumpAndSettle();
+
+    expect(called, isTrue);
+    expect(holder.value!.status, equals(QueryStatus.success));
+    expect(holder.value!.data, equals('fresh'));
   });
 
   testWidgets('staleTime Infinity should never consider data stale',

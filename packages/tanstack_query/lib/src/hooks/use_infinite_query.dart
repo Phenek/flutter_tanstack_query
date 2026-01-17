@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:tanstack_query/tanstack_query.dart';
@@ -16,8 +15,8 @@ import '../core/infinite_query_observer.dart';
 /// - [initialPageParam]: The initial page index to start fetching from.
 /// - [getNextPageParam]: Optional function to compute the next page index
 ///   given the last page's result.
-/// - [debounceTime]: If set, delays the initial fetch by the provided
-///   duration to debounce rapid key changes.
+/// - [getPreviousPageParam]: Optional function to compute the previous page
+///   index given the first page's result.
 /// - [gcTime]: Garbage-collection time in milliseconds for this query's cache entry.
 /// - [enabled]: Whether the query is enabled.
 /// - [initialData]: T | () => T — initial value that is persisted to cache if
@@ -51,8 +50,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
   required Future<T?> Function(int pageParam) queryFn,
   bool? enabled,
   required int initialPageParam,
-  int Function(T lastResult)? getNextPageParam,
-  Duration? debounceTime,
+  int? Function(T lastResult)? getNextPageParam,
   double? staleTime,
   bool? refetchOnWindowFocus,
   bool? refetchOnReconnect,
@@ -64,6 +62,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
   Object? initialData,
   Object? initialDataUpdatedAt,
   Object? placeholderData,
+  int? Function(T firstResult)? getPreviousPageParam,
 }) {
   final queryClient = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
@@ -74,7 +73,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
             queryFn: queryFn,
             initialPageParam: initialPageParam,
             getNextPageParam: getNextPageParam,
-            debounceTime: debounceTime,
+            getPreviousPageParam: getPreviousPageParam,
             staleTime: staleTime,
             enabled: enabled,
             refetchOnWindowFocus: refetchOnWindowFocus,
@@ -93,7 +92,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
         queryFn,
         initialPageParam,
         getNextPageParam,
-        debounceTime,
+        getPreviousPageParam,
         staleTime,
         enabled,
         refetchOnWindowFocus,

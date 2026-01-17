@@ -56,6 +56,52 @@ void main() {
     expect(cached.data, equals([1]));
   });
 
+  testWidgets('should share in-flight fetch for same key (infinite)',
+      (WidgetTester tester) async {
+    var calls = 0;
+    final holderA = ValueNotifier<InfiniteQueryResult<int>?>(null);
+    final holderB = ValueNotifier<InfiniteQueryResult<int>?>(null);
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: client,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final resA = useInfiniteQuery<int>(
+              queryKey: ['infinite', 'shared-fetch'],
+              queryFn: (page) async {
+                calls++;
+                await Future.delayed(Duration(milliseconds: 20));
+                return page;
+              },
+              initialPageParam: 1,
+            );
+            final resB = useInfiniteQuery<int>(
+              queryKey: ['infinite', 'shared-fetch'],
+              queryFn: (page) async {
+                calls++;
+                await Future.delayed(Duration(milliseconds: 20));
+                return page;
+              },
+              initialPageParam: 1,
+            );
+
+            holderA.value = resA;
+            holderB.value = resB;
+
+            return Column(children: [Container(), Container()]);
+          }),
+        )));
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, equals(1));
+    expect(holderA.value!.status, equals(QueryStatus.success));
+    expect(holderB.value!.status, equals(QueryStatus.success));
+    expect(holderA.value!.data, equals([1]));
+    expect(holderB.value!.data, equals([1]));
+  });
+
   testWidgets('should fetch next page when fetchNextPage is called',
       (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
@@ -92,6 +138,51 @@ void main() {
     await tester.pumpAndSettle();
 
     // should have two pages now
+    expect(holder.value!.data, equals([1, 2]));
+  });
+
+  testWidgets('should ignore fetchNextPage while already fetching next page',
+      (WidgetTester tester) async {
+    final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
+    var nextCalls = 0;
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: client,
+        child: MaterialApp(
+          home: HookBuilder(
+            builder: (context) {
+              final result = useInfiniteQuery<int>(
+                queryKey: ['infinite', 'next-page-in-flight'],
+                queryFn: (page) async {
+                  if (page > 1) {
+                    nextCalls++;
+                    await Future.delayed(Duration(milliseconds: 50));
+                  } else {
+                    await Future.delayed(Duration(milliseconds: 5));
+                  }
+                  return page;
+                },
+                initialPageParam: 1,
+                getNextPageParam: (last) => last + 1,
+              );
+
+              holder.value = result;
+              return Container();
+            },
+          ),
+        )));
+
+    await tester.pumpAndSettle();
+    expect(holder.value!.status, equals(QueryStatus.success));
+    expect(holder.value!.data, equals([1]));
+
+    holder.value!.fetchNextPage?.call();
+    holder.value!.fetchNextPage?.call();
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(nextCalls, equals(1));
     expect(holder.value!.data, equals([1, 2]));
   });
 
@@ -410,64 +501,59 @@ void main() {
     expect(holder.value!.isPlaceholderData, isFalse);
   }, timeout: Timeout(Duration(seconds: 5)));
 
-  testWidgets('should debounce when queryKey changes and debounceTime is set',
+    testWidgets(
+      'should set hasNextPage false and fetchNextPage null on last page',
       (WidgetTester tester) async {
-    bool toggled = false;
-
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
 
     await tester.pumpWidget(QueryClientProvider(
         client: client,
         child: MaterialApp(
-          home: StatefulBuilder(builder: (context, setState) {
-            return HookBuilder(builder: (ctx) {
-              final result = useInfiniteQuery<int>(
-                queryKey: ['infinite', 'debounce', toggled ? 'b' : 'a'],
-                queryFn: (page) async {
-                  await Future.delayed(Duration(milliseconds: 10));
-                  return page;
-                },
-                initialPageParam: 1,
-                debounceTime: toggled ? Duration(milliseconds: 50) : null,
-              );
+          home: HookBuilder(builder: (context) {
+            final result = useInfiniteQuery<int>(
+              queryKey: ['infinite', 'last-page'],
+              queryFn: (page) async {
+                await Future.delayed(Duration(milliseconds: 5));
+                return page;
+              },
+              initialPageParam: 1,
+              getNextPageParam: (last) => last < 4 ? last + 1 : null,
+            );
 
-              holder.value = result;
-              return Column(
-                children: [
-                  ElevatedButton(
-                      onPressed: () => setState(() => toggled = true),
-                      child: Text('toggle')),
-                ],
-              );
-            });
+            holder.value = result;
+
+            return Container();
           }),
         )));
 
-    // initial run: immediate fetch (no debounce)
-    await tester.pumpAndSettle();
-    expect(holder.value!.status, equals(QueryStatus.success));
-
-    // toggle to new queryKey with debounce enabled
-    await tester.tap(find.text('toggle'));
-    await tester.pump(); // begin rebuild + debounce timer set
-
-    // immediately after toggle it should reflect loading (pending) and empty data
-    expect(
-        holder.value!.status,
-        anyOf(equals(QueryStatus.pending), equals(QueryStatus.error),
-            equals(QueryStatus.success)));
-    // For the pending case we expect the data to be empty
-    if (holder.value!.status == QueryStatus.pending) {
-      expect(holder.value!.data, equals(<int>[]));
-    }
-
-    // wait longer than debounce + query delay to let fetch finish
-    await tester.pump(Duration(milliseconds: 120));
     await tester.pumpAndSettle();
 
-    // should now have fetched the new key
     expect(holder.value!.status, equals(QueryStatus.success));
     expect(holder.value!.data, equals([1]));
+    expect(holder.value!.hasNextPage, isTrue);
+    expect(holder.value!.fetchNextPage, isNotNull);
+
+    holder.value!.fetchNextPage?.call();
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(holder.value!.data, equals([1, 2]));
+    expect(holder.value!.hasNextPage, isTrue);
+
+    holder.value!.fetchNextPage?.call();
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(holder.value!.data, equals([1, 2, 3]));
+    expect(holder.value!.hasNextPage, isTrue);
+
+    holder.value!.fetchNextPage?.call();
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(holder.value!.data, equals([1, 2, 3, 4]));
+    expect(holder.value!.hasNextPage, isFalse);
+    expect(holder.value!.fetchNextPage, isNull);
   });
 
   testWidgets(
@@ -615,6 +701,56 @@ void main() {
     expect(
         (client.queryCache[cacheKey]!.result as InfiniteQueryResult<int>).data,
         equals([2]));
+  });
+
+  testWidgets('staleTime 0 should not expose cached data on mount (infinite)',
+      (WidgetTester tester) async {
+    final keyList = ['infinite', 'stale-zero-hide'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+    final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
+
+    client.queryCache[cacheKey] = QueryCacheEntry(
+      InfiniteQueryResult<int>(
+          key: cacheKey,
+          status: QueryStatus.success,
+          data: <int>[9],
+          isFetching: false,
+          error: null,
+          isFetchingNextPage: false),
+      DateTime.now().subtract(Duration(milliseconds: 5)),
+    );
+
+    var called = false;
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: client,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final result = useInfiniteQuery<int>(
+              queryKey: keyList,
+              queryFn: (page) async {
+                called = true;
+                await Future.delayed(Duration(milliseconds: 5));
+                return page;
+              },
+              initialPageParam: 1,
+              staleTime: 0,
+            );
+
+            holder.value = result;
+            return Container();
+          }),
+        )));
+
+    await tester.pump();
+    expect(holder.value!.status, equals(QueryStatus.pending));
+    expect(holder.value!.data, equals(<int>[]));
+
+    await tester.pumpAndSettle();
+
+    expect(called, isTrue);
+    expect(holder.value!.status, equals(QueryStatus.success));
+    expect(holder.value!.data, equals([1]));
   });
 
   testWidgets('staleTime Infinity should never consider data stale',

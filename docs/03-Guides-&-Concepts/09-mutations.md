@@ -313,10 +313,10 @@ final queryClient = QueryClient(
         // Create optimistic todo
         // Add optimistic todo to todos list via queryClient.setQueryInfiniteData / setQueryData
       },
-      onSuccess: (result) {
+      onSuccess: (result, [context]) {
         // Replace optimistic todo in the todos list with the result
       },
-      onError: (error) {
+      onError: (error, [context]) {
         // Remove optimistic todo from the todos list
       },
     ),

@@ -17,12 +17,15 @@ class QueryObserver<TQueryFnData, TError, TData>
   QueryOptions<TQueryFnData> options;
 
   QueryResult<TData> _currentResult;
-  QueryCacheEntry? _currentEntry;
   Query? _query;
+  late bool _hadCacheEntryAtInit;
 
   // Unique id used to avoid reacting to our own cache events
   final String _callerId = DateTime.now().microsecondsSinceEpoch.toString();
   void Function()? _cacheUnsubscribe;
+
+  bool _clearStaleDataOnMount = false;
+  int? _clearStaleDataOnMountAt;
 
   QueryObserver(
     this._client,
@@ -33,10 +36,16 @@ class QueryObserver<TQueryFnData, TError, TData>
           null,
           null,
         ) {
+    final cacheKey = queryKeyToCacheKey(options.queryKey);
+    _hadCacheEntryAtInit = _client.queryCache.containsKey(cacheKey);
+    _clearStaleDataOnMount =
+        _hadCacheEntryAtInit && _shouldClearStaleDataOnMount();
+    if (_clearStaleDataOnMount) {
+      _clearStaleDataOnMountAt = DateTime.now().millisecondsSinceEpoch;
+    }
     _updateQuery();
     _initFromCache();
     _subscribeToCache();
-    _updateResult();
   }
 
   void setOptions(QueryOptions<TQueryFnData> newOptions) {
@@ -47,9 +56,17 @@ class QueryObserver<TQueryFnData, TError, TData>
 
     _updateQuery();
     _updateResult();
-
     final nextKey = queryKeyToCacheKey(options.queryKey);
     final nextEnabled = options.enabled ?? true;
+
+    if (prevKey != nextKey) {
+      _hadCacheEntryAtInit = _client.queryCache.containsKey(nextKey);
+      _clearStaleDataOnMount =
+          _hadCacheEntryAtInit && _shouldClearStaleDataOnMount();
+      if (_clearStaleDataOnMount) {
+        _clearStaleDataOnMountAt = DateTime.now().millisecondsSinceEpoch;
+      }
+    }
 
     // If queryKey changed or it transitioned from disabled->enabled, trigger a refetch
     if (prevKey != nextKey || (!prevEnabled && nextEnabled)) {
@@ -59,14 +76,58 @@ class QueryObserver<TQueryFnData, TError, TData>
 
   QueryResult<TData> getCurrentResult() => _currentResult;
 
+  /// Fetch data for this observer. Supports pagination metadata for
+  /// infinite queries.
+  Future<QueryResult<TData>> fetch({FetchMeta? meta, bool? throwOnError}) async {
+    _updateQuery();
+
+    if (_query == null) return _currentResult;
+
+    try {
+      await _query!.fetch(meta: meta).timeout(Duration(seconds: 4),
+          onTimeout: () {
+        return null;
+      });
+    } catch (e) {
+      if (throwOnError == true) rethrow;
+    } finally {
+      _updateResult();
+      _notify();
+    }
+    return _currentResult;
+  }
+
   @override
   void onSubscribe() {
     // Called when the first listener subscribes. Decide based on
     // `refetchOnMount` whether to start a refetch. Delegate the policy to
     // `shouldFetchOnMount` so behavior matches JS implementation.
     if (shouldFetchOnMount()) {
+      _clearStaleDataOnMount =
+          _hadCacheEntryAtInit && _shouldClearStaleDataOnMount();
+      if (_clearStaleDataOnMount) {
+        _clearStaleDataOnMountAt = DateTime.now().millisecondsSinceEpoch;
+      }
       refetch();
     }
+  }
+
+  bool _shouldClearStaleDataOnMount() {
+    final staleTime =
+        options.staleTime ?? _client.defaultOptions.queries.staleTime ?? 0;
+    if (staleTime != 0) return false;
+
+    final refetchOnMount =
+        options.refetchOnMount ?? _client.defaultOptions.queries.refetchOnMount;
+    if (!refetchOnMount) return false;
+
+    final cacheKey = queryKeyToCacheKey(options.queryKey);
+    final entry = _client.queryCache[cacheKey];
+    if (entry == null || entry.result is! QueryResult) return false;
+    final res = entry.result as QueryResult;
+    if (res.data == null) return false;
+
+    return true;
   }
 
   /// Whether this observer should trigger a refetch when it mounts/subscribes.
@@ -126,25 +187,7 @@ class QueryObserver<TQueryFnData, TError, TData>
   }
 
   Future<QueryResult<TData>> refetch({bool? throwOnError}) async {
-    _updateQuery();
-    final cacheKey = queryKeyToCacheKey(options.queryKey);
-
-    if (_query == null) return _currentResult;
-
-    try {
-      // Bound the fetch with a timeout so observers don't wait forever
-      await _query!.fetch().timeout(Duration(seconds: 4), onTimeout: () {
-        return null;
-      });
-      _currentEntry = _client.queryCache[cacheKey];
-    } catch (e) {
-      _currentEntry = _client.queryCache[cacheKey];
-      if (throwOnError == true) rethrow;
-    } finally {
-      _updateResult();
-      _notify();
-    }
-    return _currentResult;
+    return fetch(throwOnError: throwOnError);
   }
 
   void onQueryUpdate() {
@@ -153,15 +196,12 @@ class QueryObserver<TQueryFnData, TError, TData>
   }
 
   void _updateQuery() {
-    final cacheKey = queryKeyToCacheKey(options.queryKey);
     // Use QueryCache.build to obtain a Query instance and subscribe to it
     final q = _client.queryCache
         .build<TData>(_client, options as QueryOptions<TData>);
 
     // If we had a previous query we should remove ourselves
     // (Query itself maintains no back-reference, observers subscribe directly)
-    _currentEntry = _client.queryCache[cacheKey];
-
     // Detach from previous query if different
     if (_query != null && _query != q) {
       try {
@@ -180,74 +220,105 @@ class QueryObserver<TQueryFnData, TError, TData>
   Query? _lastQueryWithDefinedData;
   dynamic _lastPlaceholderDataOption;
 
+  QueryResult<TData> createResult(
+      QueryResult<dynamic> res, QueryCacheEntry? entry) {
+    final cacheKey = queryKeyToCacheKey(options.queryKey);
+
+    // Determine the timestamp to use for staleness checks. Prefer the
+    // dataUpdatedAt on the result (used by initialData) and fall back to
+    // entry.timestamp when missing.
+    final int lastUpdatedAt = res.dataUpdatedAt ??
+        (entry != null ? entry.timestamp.millisecondsSinceEpoch : 0);
+
+    final isStale = entry == null ||
+        DateTime.now()
+                .difference(DateTime.fromMillisecondsSinceEpoch(lastUpdatedAt))
+                .inMilliseconds >
+            (options.staleTime ?? 0);
+
+    // Track last query with defined data for placeholderData function usage
+    if (res.data != null) {
+      _lastQueryWithDefinedData = _query;
+    }
+
+    // Prepare default values
+    var status = res.status;
+    TData? data;
+    try {
+      data = res.data as TData?;
+    } catch (_) {
+      data = null;
+      status = QueryStatus.pending;
+    }
+    var isPlaceholder = res.isPlaceholderData;
+    var isFetching = res.isFetching;
+
+    if (_clearStaleDataOnMount) {
+      final updatedAt = res.dataUpdatedAt ??
+          (entry != null ? entry.timestamp.millisecondsSinceEpoch : 0);
+      final clearUntil = _clearStaleDataOnMountAt ?? 0;
+
+      if (res.isFetching || updatedAt <= clearUntil) {
+        status = QueryStatus.pending;
+        data = null;
+        isPlaceholder = false;
+        isFetching = true;
+      } else {
+        _clearStaleDataOnMount = false;
+      }
+    }
+
+    // If placeholderData is configured and we have no data and are pending,
+    // compute placeholderData and treat it as success for this observer only
+    if (options.placeholderData != null &&
+        data == null &&
+        status == QueryStatus.pending) {
+      dynamic placeholderData;
+
+      // Reuse previous placeholder data if possible (memoization)
+      if (_currentResult.isPlaceholderData &&
+          options.placeholderData == _lastPlaceholderDataOption) {
+        placeholderData = _currentResult.data;
+      } else {
+        placeholderData = options.resolvePlaceholderData(
+            _lastQueryWithDefinedData?.result?.data, _lastQueryWithDefinedData);
+      }
+
+      if (placeholderData != null) {
+        status = QueryStatus.success;
+        data = placeholderData as TData?;
+        isPlaceholder = true;
+        _lastPlaceholderDataOption = options.placeholderData;
+      }
+    }
+
+    return QueryResult<TData>(
+      cacheKey,
+      status,
+      data,
+      res.error,
+      isFetching: isFetching,
+      isStale: isStale,
+      dataUpdatedAt: res.dataUpdatedAt,
+      isPlaceholderData: isPlaceholder,
+      failureCount: res.failureCount,
+      failureReason: res.failureReason,
+      refetch: ({bool? throwOnError}) => fetch(throwOnError: throwOnError),
+      fetchMeta: res.fetchMeta,
+    );
+  }
+
   void _updateResult() {
-    final entry = _currentEntry;
+    final cacheKey = queryKeyToCacheKey(options.queryKey);
+    final entry = _client.queryCache[cacheKey];
     final res = entry?.result;
 
     if (res is QueryResult) {
-      final cacheKey = queryKeyToCacheKey(options.queryKey);
-
-      // Determine the timestamp to use for staleness checks. Prefer the
-      // dataUpdatedAt on the result (used by initialData) and fall back to
-      // entry.timestamp when missing.
-      final int lastUpdatedAt = res.dataUpdatedAt ??
-          (entry != null ? entry.timestamp.millisecondsSinceEpoch : 0);
-
-      final isStale = entry == null ||
-          DateTime.now()
-                  .difference(
-                      DateTime.fromMillisecondsSinceEpoch(lastUpdatedAt))
-                  .inMilliseconds >
-              (options.staleTime ?? 0);
-
-      // Track last query with defined data for placeholderData function usage
-      if (res.data != null) {
-        _lastQueryWithDefinedData = _query;
+      try {
+        _currentResult = createResult(res, entry);
+      } catch (_) {
+        // Ignore cache entry when it cannot be cast to the expected generic type.
       }
-
-      // Prepare default values
-      var status = res.status;
-      var data = res.data as TData?;
-      var isPlaceholder = false;
-
-      // If placeholderData is configured and we have no data and are pending,
-      // compute placeholderData and treat it as success for this observer only
-      if (options.placeholderData != null &&
-          data == null &&
-          status == QueryStatus.pending) {
-        dynamic placeholderData;
-
-        // Reuse previous placeholder data if possible (memoization)
-        if (_currentResult.isPlaceholderData &&
-            options.placeholderData == _lastPlaceholderDataOption) {
-          placeholderData = _currentResult.data;
-        } else {
-          placeholderData = options.resolvePlaceholderData(
-              _lastQueryWithDefinedData?.result?.data,
-              _lastQueryWithDefinedData);
-        }
-
-        if (placeholderData != null) {
-          status = QueryStatus.success;
-          data = placeholderData as TData?;
-          isPlaceholder = true;
-          _lastPlaceholderDataOption = options.placeholderData;
-        }
-      }
-
-      _currentResult = QueryResult<TData>(
-        cacheKey,
-        status,
-        data,
-        res.error,
-        isFetching: res.isFetching,
-        isStale: isStale,
-        dataUpdatedAt: res.dataUpdatedAt,
-        isPlaceholderData: isPlaceholder,
-        failureCount: res.failureCount,
-        failureReason: res.failureReason,
-        refetch: ({bool? throwOnError}) => refetch(throwOnError: throwOnError),
-      );
     }
   }
 
@@ -255,7 +326,6 @@ class QueryObserver<TQueryFnData, TError, TData>
     final cacheKey = queryKeyToCacheKey(options.queryKey);
     final cacheEntry = _client.queryCache[cacheKey];
     if (cacheEntry != null && cacheEntry.result is QueryResult) {
-      _currentEntry = cacheEntry;
       _updateResult();
     }
   }
@@ -275,7 +345,6 @@ class QueryObserver<TQueryFnData, TError, TData>
           event.type == QueryCacheEventType.updated) {
         final dynamic raw = event.entry?.result;
         if (raw is QueryResult) {
-          _currentEntry = event.entry;
           _updateResult();
           _notify();
         }
@@ -301,8 +370,7 @@ class QueryObserver<TQueryFnData, TError, TData>
   void _notify() {
     notifyAll((listener) {
       try {
-        final typed = listener as QueryObserverListener<TData, TError>;
-        typed(_currentResult);
+        (listener as dynamic)(_currentResult);
       } catch (_) {}
     });
   }
