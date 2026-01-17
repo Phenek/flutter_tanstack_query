@@ -18,6 +18,8 @@ class Query<T> extends Removable {
     // Initialize GC timing using options + client defaults
     updateGcTime(options.gcTime,
         defaultGcTime: client.defaultOptions.queries.gcTime);
+    // Schedule initial GC so unused queries are collected
+    scheduleGc();
   }
 
   void addObserver(dynamic observer) {
@@ -145,6 +147,9 @@ class Query<T> extends Removable {
       // Clear the retryer reference since the fetch has settled
       _retryer = null;
       rethrow;
+    } finally {
+      // Ensure GC is scheduled after any fetch completes, matching JS behavior
+      scheduleGc();
     }
   }
 
@@ -201,6 +206,9 @@ class Query<T> extends Removable {
 
   @override
   void optionalRemove() {
+    if (hasObservers) {
+      return;
+    }
     client.queryCache.remove(cacheKey);
   }
 }

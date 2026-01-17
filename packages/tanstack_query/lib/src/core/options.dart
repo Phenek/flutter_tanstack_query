@@ -17,7 +17,7 @@ class QueryDefaultOptions {
       this.retryDelay = 1000,
       this.retryOnMount = true,
       this.refetchOnMount = true,
-      this.gcTime = 5 * 60 * 1000,
+      this.gcTime = 30 * 1000,
       this.refetchOnWindowFocus = true,
       this.refetchOnReconnect = true});
 }

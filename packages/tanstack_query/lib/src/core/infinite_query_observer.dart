@@ -756,8 +756,9 @@ class InfiniteQueryObserver<T> extends Subscribable<Function> {
         gcTime: _options.gcTime,
       );
 
-      final q = _client.queryCache.build<T>(_client, qOptions);
-      q.scheduleGc();
+      // Ensure a Query instance exists for this key so its constructor can
+      // initialize GC timing; do not directly schedule GC from observers.
+      _client.queryCache.build<T>(_client, qOptions);
     } catch (_) {}
   }
 

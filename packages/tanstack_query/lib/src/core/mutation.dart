@@ -217,6 +217,5 @@ class Mutation<T, P> extends Removable {
     // Re-evaluate GC timing when options change
     updateGcTime(options.gcTime,
         defaultGcTime: client.defaultOptions.mutations.gcTime);
-    scheduleGc();
   }
 }

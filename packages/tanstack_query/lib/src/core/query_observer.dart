@@ -121,7 +121,6 @@ class QueryObserver<TQueryFnData, TError, TData>
     } catch (_) {}
     try {
       _query?.removeObserver(this);
-      _query?.scheduleGc();
       _query = null;
     } catch (_) {}
   }

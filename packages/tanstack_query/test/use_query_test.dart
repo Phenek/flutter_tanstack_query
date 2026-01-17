@@ -750,6 +750,75 @@ void main() {
     }
 
     expect(queryClient.queryCache.containsKey(cacheKey), isFalse);
+    // Cleanup: ensure scheduled GC timers are cancelled before test exit
+    queryClient.queryCache.clear();
+  });
+
+  testWidgets('should not garbage collect if observer remounts before gc fires',
+      (WidgetTester tester) async {
+    final holder = ValueNotifier<QueryResult<String>?>(null);
+    final keyList = ['gc-resurrect'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+
+    // mount a widget that runs a query with a short gcTime
+    await tester.pumpWidget(QueryClientProvider(
+        client: queryClient,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final result = useQuery<String>(
+              queryKey: keyList,
+              queryFn: () async {
+                await Future.delayed(Duration(milliseconds: 5));
+                return 'ok';
+              },
+              gcTime: 100, // ms
+            );
+
+            holder.value = result;
+            return Container();
+          }),
+        )));
+
+    // let the query complete and ensure the cache has the entry
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(queryClient.queryCache.containsKey(cacheKey), isTrue);
+
+    // unmount the hook (no observers should remain)
+    await tester.pumpWidget(QueryClientProvider(
+        client: queryClient, child: MaterialApp(home: Container())));
+
+    // wait a short time and then remount before GC fires
+    await tester.pump(Duration(milliseconds: 50));
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: queryClient,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final result = useQuery<String>(
+              queryKey: keyList,
+              queryFn: () async {
+                return 'ok';
+              },
+            );
+
+            holder.value = result;
+            return Container();
+          }),
+        )));
+
+    // wait longer than the original gcTime to ensure GC would have fired
+    await tester.pump(Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+
+    expect(queryClient.queryCache.containsKey(cacheKey), isTrue);
+
+    // Preempt teardown: unmount the hook and clear the cache so no GC timers
+    // remain pending when the test framework finalizes the widget tree.
+    await tester.pumpWidget(QueryClientProvider(
+        client: queryClient, child: MaterialApp(home: Container())));
+    queryClient.queryCache.clear();
   });
 
   testWidgets('setQueryData should update all useQuery observers with same key',

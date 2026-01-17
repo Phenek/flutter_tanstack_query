@@ -1,3 +1,8 @@
+## 1.2.2 (17/01/26)
+
+- add context to mutation callbacks
+- bug fixes and performance improvements
+
 ## 1.2.1 (14/01/26)
 
 - upgrade sdk requirement
