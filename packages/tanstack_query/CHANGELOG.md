@@ -1,3 +1,7 @@
+## 1.2.4 (18/01/26)
+
+- Correct default GC Time to 5 minutes
+
 ## 1.2.3 (18/01/26)
 
 - refactor queryObservers
