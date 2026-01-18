@@ -89,8 +89,8 @@ class Query<T> extends Removable {
             dataUpdatedAt: hasPrevData ? prevRes.dataUpdatedAt : null,
             isPlaceholderData: false,
             failureCount: failureCount,
-          failureReason: error,
-          fetchMeta: _fetchMeta);
+            failureReason: error,
+            fetchMeta: _fetchMeta);
         client.queryCache[cacheKey] = QueryCacheEntry<T>(
             failRes, DateTime.now(),
             queryFnRunning: running);
@@ -112,8 +112,8 @@ class Query<T> extends Removable {
         dataUpdatedAt: hasPrevData ? prevRes.dataUpdatedAt : null,
         isPlaceholderData: false,
         failureCount: 0,
-      failureReason: null,
-      fetchMeta: _fetchMeta);
+        failureReason: null,
+        fetchMeta: _fetchMeta);
 
     // Wrap retryer.start() in a TrackedFuture so other code can inspect queryFnRunning
     running = TrackedFuture<T>(_retryer!.start());
@@ -123,7 +123,7 @@ class Query<T> extends Removable {
 
     try {
       final value = await running;
-        final queryResult = QueryResult<T>(
+      final queryResult = QueryResult<T>(
           cacheKey, QueryStatus.success, value, null,
           isFetching: false,
           dataUpdatedAt: DateTime.now().millisecondsSinceEpoch,
@@ -140,7 +140,7 @@ class Query<T> extends Removable {
       return value;
     } catch (e) {
       final failureCount = _retryer?.failureCount ?? 0;
-        final errorRes = QueryResult<T>(cacheKey, QueryStatus.error, null, e,
+      final errorRes = QueryResult<T>(cacheKey, QueryStatus.error, null, e,
           isFetching: false,
           dataUpdatedAt: null,
           isPlaceholderData: false,

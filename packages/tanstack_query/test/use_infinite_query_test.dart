@@ -501,7 +501,7 @@ void main() {
     expect(holder.value!.isPlaceholderData, isFalse);
   }, timeout: Timeout(Duration(seconds: 5)));
 
-    testWidgets(
+  testWidgets(
       'should set hasNextPage false and fetchNextPage null on last page',
       (WidgetTester tester) async {
     final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);

@@ -4,18 +4,12 @@ import 'package:tanstack_query/tanstack_query.dart';
 ///
 /// This mirrors the JS `InfiniteQueryObserver` by extending `QueryObserver`
 /// and overriding result creation to include pagination state and helpers.
-class InfiniteQueryObserver<T>
-    extends QueryObserver<List<T>, Object, List<T>> {
+class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
   List<T>? _lastPlaceholderData;
   dynamic _lastPlaceholderDataOption;
-  InfiniteQueryObserver(QueryClient client, InfiniteQueryOptions<T> options)
-      : super(client, options);
+  InfiniteQueryObserver(super._client, super.options);
 
   @override
-  void setOptions(QueryOptions<List<T>> options) {
-    super.setOptions(options);
-  }
-
   InfiniteQueryResult<T> getCurrentResult() =>
       _coerceResult(super.getCurrentResult());
 
@@ -103,7 +97,8 @@ class InfiniteQueryObserver<T>
   }
 
   @override
-  Future<QueryResult<List<T>>> fetch({FetchMeta? meta, bool? throwOnError}) async {
+  Future<QueryResult<List<T>>> fetch(
+      {FetchMeta? meta, bool? throwOnError}) async {
     return await _fetchInfinite(meta: meta, throwOnError: throwOnError);
   }
 
@@ -198,7 +193,6 @@ class InfiniteQueryObserver<T>
     }
 
     TrackedFuture<T?>? tracked;
-    QueryCacheEntry? nextEntry = cacheEntry;
     if (direction == null) {
       final retryer = Retryer<T?>(
         fn: () async => await opts.pageQueryFn(opts.initialPageParam),
@@ -207,7 +201,7 @@ class InfiniteQueryObserver<T>
             QueryClient.instance.defaultOptions.queries.retryDelay,
       );
       tracked = TrackedFuture<T?>(retryer.start());
-      QueryClient.instance.queryCache[cacheKey] = nextEntry = QueryCacheEntry(
+      QueryClient.instance.queryCache[cacheKey] = QueryCacheEntry(
         pending,
         DateTime.now(),
         queryFnRunning: tracked,
@@ -521,7 +515,8 @@ class InfiniteQueryObserver<T>
           !isFetchingPreviousPage,
       hasNextPage: hasNextPage(opts, parentResult.data),
       hasPreviousPage: hasPreviousPage(opts, parentResult.data),
-      fetchNextPage: hasNextPage(opts, parentResult.data) ? fetchNextPage : null,
+      fetchNextPage:
+          hasNextPage(opts, parentResult.data) ? fetchNextPage : null,
       fetchPreviousPage: fetchPreviousPage,
       isStale: parentResult.isStale,
       dataUpdatedAt: parentResult.dataUpdatedAt,

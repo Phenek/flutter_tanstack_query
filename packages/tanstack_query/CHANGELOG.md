@@ -1,3 +1,8 @@
+## 1.2.3 (18/01/26)
+
+- refactor queryObservers
+- add useInfiniteQuery properties result (isFetchingPreviousPage, isFetchNextPageError, hasNextPage, ...)
+
 ## 1.2.2 (17/01/26)
 
 - add context to mutation callbacks

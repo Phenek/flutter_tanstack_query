@@ -78,7 +78,8 @@ class QueryObserver<TQueryFnData, TError, TData>
 
   /// Fetch data for this observer. Supports pagination metadata for
   /// infinite queries.
-  Future<QueryResult<TData>> fetch({FetchMeta? meta, bool? throwOnError}) async {
+  Future<QueryResult<TData>> fetch(
+      {FetchMeta? meta, bool? throwOnError}) async {
     _updateQuery();
 
     if (_query == null) return _currentResult;

@@ -21,33 +21,33 @@ class InfinityPage extends HookWidget {
         Pagination(number: pageParam, size: page.value.size),
       ),
       initialPageParam: page.value.number,
-      getNextPageParam: (last) => (last.page < last.totalPages) ? last.page + 1 : null,
+      getNextPageParam: (last) =>
+          (last.page < last.totalPages) ? last.page + 1 : null,
     );
 
-    print('infiniteTodos: '
-      'hasData=${infiniteTodos.data!= null && infiniteTodos.data!.isNotEmpty}, '
-      'isError=${infiniteTodos.isError}, '
-      'isFetching=${infiniteTodos.isFetching}, '
-      'isFetchingNextPage=${infiniteTodos.isFetchingNextPage}, '
-      'isPending=${infiniteTodos.isPending}, '
-      'isSuccess=${infiniteTodos.isSuccess}');
+    useEffect(
+      () {
+        void onScroll() {
+          if (!scrollController.hasClients) return;
 
-    useEffect(() {
-      void onScroll() {
-        if (!scrollController.hasClients) return;
-
-        if (scrollController.position.pixels >=
-            scrollController.position.maxScrollExtent - 200) {
-          if (infiniteTodos.hasNextPage &&
-              infiniteTodos.fetchNextPage != null) {
-            infiniteTodos.fetchNextPage!();
+          if (scrollController.position.pixels >=
+              scrollController.position.maxScrollExtent - 200) {
+            if (infiniteTodos.hasNextPage &&
+                infiniteTodos.fetchNextPage != null) {
+              infiniteTodos.fetchNextPage!();
+            }
           }
         }
-      }
 
-      scrollController.addListener(onScroll);
-      return () => scrollController.removeListener(onScroll);
-    }, [scrollController, infiniteTodos.hasNextPage, infiniteTodos.fetchNextPage]);
+        scrollController.addListener(onScroll);
+        return () => scrollController.removeListener(onScroll);
+      },
+      [
+        scrollController,
+        infiniteTodos.hasNextPage,
+        infiniteTodos.fetchNextPage,
+      ],
+    );
 
     if (scrollController.hasClients &&
         scrollController.position.maxScrollExtent ==
