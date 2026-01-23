@@ -42,47 +42,42 @@ MutationResult<T, P> useMutation<T, P>(
     dynamic retryDelay,
     int? gcTime}) {
   final queryClient = useQueryClient();
+  final cacheKey = mutationKey != null ? queryKeyToCacheKey(mutationKey) : null;
 
-  // Create observer once per hook instance
-  final observer =
-      useMemoized<MutationObserver<T, P>>(() => MutationObserver<T, P>(
-            queryClient,
-            MutationOptions<T, P>(
-              mutationFn: mutationFn,
-              mutationKey: mutationKey,
-              onSuccess: onSuccess,
-              onError: onError,
-              onSettled: onSettled,
-              retry: retry,
-              retryDelay: retryDelay,
-              gcTime: gcTime,
-            ),
-          ));
+  final options = useMemoized(
+      () => MutationOptions<T, P>(
+            mutationFn: mutationFn,
+            mutationKey: mutationKey,
+            onSuccess: onSuccess,
+            onError: onError,
+            onSettled: onSettled,
+            retry: retry,
+            retryDelay: retryDelay,
+            gcTime: gcTime,
+          ),
+      [
+        mutationFn,
+        mutationKey,
+        onSuccess,
+        onError,
+        onSettled,
+        retry,
+        retryDelay,
+        gcTime
+      ]);
 
-  // Keep observer options in sync when parameters change
+  // Observer follows the same pattern as useQuery: create once and
+  // keep it in sync via setOptions to avoid complex lifecycle code in the hook.
+  // Create the observer once for this cache key and keep it in sync via setOptions
+  final observer = useMemoized<MutationObserver<T, P>>(
+      () => MutationObserver<T, P>(queryClient, options),
+      [queryClient, cacheKey]);
+
+  // Keep observer options in sync when any option changes
   useEffect(() {
-    observer.setOptions(MutationOptions<T, P>(
-      mutationFn: mutationFn,
-      mutationKey: mutationKey,
-      onSuccess: onSuccess,
-      onError: onError,
-      onSettled: onSettled,
-      retry: retry,
-      retryDelay: retryDelay,
-      gcTime: gcTime,
-    ));
+    observer.setOptions(options);
     return null;
-  }, [
-    observer,
-    mutationFn,
-    mutationKey,
-    onSuccess,
-    onError,
-    onSettled,
-    retry,
-    retryDelay,
-    gcTime
-  ]);
+  }, [observer, options]);
 
   // Local result state that mirrors the observer's current result
   final resultState =
@@ -91,10 +86,13 @@ MutationResult<T, P> useMutation<T, P>(
   useEffect(() {
     // subscribe updates
     final unsubscribe = observer.subscribe((res) {
-      resultState.value = res;
+      Future.microtask(() {
+        try {
+          resultState.value = res;
+        } catch (_) {}
+      });
     });
-    // initialize
-    resultState.value = observer.getCurrentResult();
+
     return () => unsubscribe();
   }, [observer]);
 

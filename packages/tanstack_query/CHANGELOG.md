@@ -1,3 +1,7 @@
+## 1.2.5 (23/01/26)
+
+- Fix: Prevent infinite widget rebuilds when passing inline (non-const) `mutationKey` to `useMutation`.
+
 ## 1.2.4 (18/01/26)
 
 - Correct default GC Time to 5 minutes

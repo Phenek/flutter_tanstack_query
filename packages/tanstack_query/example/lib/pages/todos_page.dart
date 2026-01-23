@@ -3,7 +3,7 @@ import 'package:example/models/pagination.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:example/widgets/todo_card.dart';
-import 'package:example/widgets/floating_button.dart';
+import 'package:example/widgets/add_button.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 
 class TodosPage extends HookWidget {
@@ -132,7 +132,7 @@ class TodosPage extends HookWidget {
             ],
           ),
         ),
-        Positioned(right: 16, bottom: 16, child: FloatingButton()),
+        Positioned(right: 16, bottom: 16, child: AddButton()),
       ],
     );
   }

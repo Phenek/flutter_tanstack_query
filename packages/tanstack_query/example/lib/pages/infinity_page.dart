@@ -1,7 +1,7 @@
 import 'package:example/conf/api_conf.dart';
 import 'package:example/models/pagination.dart';
 import 'package:example/widgets/todo_card.dart';
-import 'package:example/widgets/floating_button.dart';
+import 'package:example/widgets/add_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:example/models/todo.dart';
@@ -136,7 +136,7 @@ class InfinityPage extends HookWidget {
             if (content != null) Expanded(child: content),
           ],
         ),
-        Positioned(right: 16, bottom: 16, child: FloatingButton()),
+        Positioned(right: 16, bottom: 16, child: AddButton()),
       ],
     );
   }

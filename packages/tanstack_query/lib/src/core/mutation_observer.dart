@@ -61,12 +61,12 @@ class MutationObserver<T, P> extends Subscribable<Function> {
   }
 
   void setOptions(MutationOptions<T, P> options) {
-    final prev = this.options;
+    final prevKey = queryKeyToCacheKey(this.options.mutationKey ?? []);
+    final nextKey = queryKeyToCacheKey(options.mutationKey ?? []);
+
     this.options = options;
     // If mutation key changed, reset the current mutation.
-    if (prev.mutationKey != null &&
-        options.mutationKey != null &&
-        prev.mutationKey != options.mutationKey) {
+    if (prevKey != nextKey) {
       reset();
     } else if (_currentMutation?.state.isPending ?? false) {
       _currentMutation?.setOptions(options);

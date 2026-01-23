@@ -7,8 +7,8 @@ import 'package:example/models/todo.dart';
 /// Reusable floating ``+`` button that shows a dialog with a single text field.
 ///
 /// Use [onCreate] to receive the entered title when the user confirms.
-class FloatingButton extends HookWidget {
-  const FloatingButton({super.key});
+class AddButton extends HookWidget {
+  const AddButton({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +30,9 @@ class FloatingButton extends HookWidget {
 
     return FloatingActionButton(
       tooltip: 'Add todo',
-      child: const Icon(Icons.add),
+      child: addTodoMutation.isPending
+          ? const CircularProgressIndicator()
+          : const Icon(Icons.add),
       onPressed: () async {
         controller.text = '';
         await showDialog<void>(

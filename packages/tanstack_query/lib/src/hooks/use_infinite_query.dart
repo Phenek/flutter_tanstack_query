@@ -123,9 +123,11 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
 
   useEffect(() {
     final unsubscribe = observer.subscribe((InfiniteQueryResult<T> res) {
-      try {
-        state.value = res;
-      } catch (_) {}
+      Future.microtask(() {
+        try {
+          state.value = res;
+        } catch (_) {}
+      });
     });
 
     return () {

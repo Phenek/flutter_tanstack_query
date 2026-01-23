@@ -110,9 +110,11 @@ QueryResult<T> useQuery<T>(
   useEffect(() {
     // Subscribe with a typed listener matching QueryObserver's contract
     final unsubscribe = observer.subscribe((QueryResult<T> res) {
-      try {
-        state.value = res;
-      } catch (_) {}
+      Future.microtask(() {
+        try {
+          state.value = res;
+        } catch (_) {}
+      });
     });
 
     return () {
