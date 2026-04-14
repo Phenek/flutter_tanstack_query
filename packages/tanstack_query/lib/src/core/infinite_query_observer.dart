@@ -1,12 +1,19 @@
 import 'package:tanstack_query/tanstack_query.dart';
+import 'infinite_query_behavior.dart';
 
 /// Observer for infinite/paginated queries.
 ///
-/// This mirrors the JS `InfiniteQueryObserver` by extending `QueryObserver`
-/// and overriding result creation to include pagination state and helpers.
+/// Architecture mirrors React's `InfiniteQueryObserver`:
+/// - `fetch()` injects [InfiniteQueryBehavior] into the options, then
+///   delegates to `Query.fetch()` which is the single dedup gate (one
+///   [Retryer] per in-flight fetch, checked synchronously).
+/// - `createResult()` reads `currentQuery?.fetchMeta` — the authoritative
+///   in-flight direction set synchronously by [Query.fetch()] — so that
+///   `isFetchingNextPage` is never derived from the stale cached result.
 class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
   List<T>? _lastPlaceholderData;
   dynamic _lastPlaceholderDataOption;
+
   InfiniteQueryObserver(super._client, super.options);
 
   @override
@@ -82,11 +89,15 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
     final cacheKey = queryKeyToCacheKey(options.queryKey);
     final entry = QueryClient.instance.queryCache[cacheKey];
 
-    if (entry?.result is InfiniteQueryResult) {
+    // Accept both InfiniteQueryResult (legacy) and plain QueryResult<List<T>>
+    // (written by the new Query.fetch() + InfiniteQueryBehavior path).
+    if (entry?.result is InfiniteQueryResult ||
+        entry?.result is QueryResult<List<T>>) {
       try {
-        final raw = entry!.result as InfiniteQueryResult;
+        final raw = entry!.result;
         if (raw.data != null) {
-          (raw.data as List).cast<T>();
+          // Force eager evaluation to catch type mismatches (List.cast is lazy).
+          List<T>.from(raw.data as List);
         }
       } catch (_) {
         return true;
@@ -99,32 +110,94 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
   @override
   Future<QueryResult<List<T>>> fetch(
       {FetchMeta? meta, bool? throwOnError}) async {
-    // Mirror React: rebuild _query first so it is live after a clear().
-    // Without this, the orphaned Query is never re-registered in _queries and
-    // GC fires after gcTime even though observers are still attached.
+    // Mirror React: rebuild _query so it is live after a clear().
     updateQuery();
 
-    // _fetchInfinite writes directly to the cache (bypassing Query.fetch()).
-    // After it completes, notify ALL observers registered on the Query
-    // (mirrors React's Query._dispatch() → observer.onQueryUpdate() path).
-    // This fixes the multi-observer notification bug: when observer B skips
-    // its own fetch (shouldFetchOnMount returns false because the in-flight
-    // pending entry is not stale), it must still be notified when A's fetch
-    // settles.
+    // Inject the behavior so Query.fetch() uses InfiniteQueryBehavior as the
+    // fetchFn provider, giving us a single Retryer as the dedup gate.
+    final opts = options as InfiniteQueryOptions<T>;
+
+    final q = currentQuery;
+    if (q == null) return getCurrentResult();
+
     try {
-      return await _fetchInfinite(meta: meta, throwOnError: throwOnError);
-    } finally {
-      final q = currentQuery;
-      if (q != null) {
-        // notifyObservers() calls onQueryUpdate() on every observer in
-        // q._observers — equivalent to React's Query._dispatch() fan-out.
-        q.notifyObservers();
-      } else {
-        onQueryUpdate();
-      }
+      // Pass the behavior directly to Query.fetch() so that options
+      // (InfiniteQueryOptions) are preserved intact for the behavior cast.
+      await q.fetch(meta: meta, behavior: InfiniteQueryBehavior<T>());
+    } catch (e) {
+      if (throwOnError == true) rethrow;
     }
+
+    // After the query settles, read the raw result and wrap it as
+    // InfiniteQueryResult — preserving backward-compat for tests that cast
+    // client.queryCache[key]!.result as InfiniteQueryResult.
+    final cacheKey = queryKeyToCacheKey(opts.queryKey);
+    final settled = QueryClient.instance.queryCache[cacheKey]?.result;
+
+    if (settled is InfiniteQueryResult<T>) return settled;
+
+    if (settled is QueryResult<List<T>>) {
+      final wrapped = _buildInfiniteResult(opts, settled, meta);
+      QueryClient.instance.queryCache[cacheKey] =
+          QueryCacheEntry(wrapped, DateTime.now());
+      // Fan-out to all observers on this Query (mirrors React's #dispatch fan-out).
+      q.notifyObservers();
+      return wrapped;
+    }
+
+    // Fallback: read via normal observer path.
+    q.notifyObservers();
+    return getCurrentResult();
   }
 
+  /// Build an [InfiniteQueryResult] from a plain [QueryResult<List<T>>] that
+  /// came out of [Query.fetch()] via [InfiniteQueryBehavior].
+  InfiniteQueryResult<T> _buildInfiniteResult(
+    InfiniteQueryOptions<T> opts,
+    QueryResult<List<T>> res,
+    FetchMeta? fetchMeta,
+  ) {
+    List<T> safeData = <T>[];
+    try {
+      if (res.data != null) safeData = (res.data as List).cast<T>();
+    } catch (_) {}
+
+    final direction = fetchMeta?.fetchMore?.direction;
+    final isFetchingNextPage = res.isFetching && direction == FetchDirection.forward;
+    final isFetchingPreviousPage =
+        res.isFetching && direction == FetchDirection.backward;
+    final isFetchNextPageError = res.isError && direction == FetchDirection.forward;
+    final isFetchPreviousPageError =
+        res.isError && direction == FetchDirection.backward;
+
+    return InfiniteQueryResult<T>(
+      key: res.key,
+      status: res.status,
+      data: safeData,
+      isFetching: res.isFetching,
+      error: res.error,
+      isFetchingNextPage: isFetchingNextPage,
+      isFetchingPreviousPage: isFetchingPreviousPage,
+      isFetchNextPageError: isFetchNextPageError,
+      isFetchPreviousPageError: isFetchPreviousPageError,
+      isRefetchError:
+          res.isError && !isFetchNextPageError && !isFetchPreviousPageError,
+      isRefetching: res.isFetching && !isFetchingNextPage && !isFetchingPreviousPage,
+      hasNextPage: hasNextPage(opts, safeData),
+      hasPreviousPage: hasPreviousPage(opts, safeData),
+      fetchNextPage: hasNextPage(opts, safeData) ? fetchNextPage : null,
+      fetchPreviousPage: fetchPreviousPage,
+      isStale: res.isStale,
+      dataUpdatedAt: res.dataUpdatedAt,
+      isPlaceholderData: res.isPlaceholderData,
+      failureCount: res.failureCount,
+      failureReason: res.failureReason,
+      refetch: ({bool? throwOnError}) => fetch(throwOnError: throwOnError),
+      fetchMeta: fetchMeta,
+    );
+  }
+
+  /// Returns a copy of [opts] with [InfiniteQueryBehavior] injected as the
   Future<InfiniteQueryResult<T>> fetchNextPage() async {
     final result = await fetch(
       meta: const FetchMeta(
@@ -139,337 +212,6 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
           fetchMore: FetchMore(direction: FetchDirection.backward)),
     );
     return result as InfiniteQueryResult<T>;
-  }
-
-  Future<InfiniteQueryResult<T>> _fetchInfinite(
-      {FetchMeta? meta, bool? throwOnError}) async {
-    final opts = options as InfiniteQueryOptions<T>;
-    final cacheKey = queryKeyToCacheKey(opts.queryKey);
-    final cacheEntry = QueryClient.instance.queryCache[cacheKey];
-
-    final current = getCurrentResult();
-    final currentData = current.data ?? <T>[];
-    final hasPrevData = currentData.isNotEmpty;
-
-    final direction = meta?.fetchMore?.direction;
-    final isFetchingNextPage = direction == FetchDirection.forward;
-    final isFetchingPreviousPage = direction == FetchDirection.backward;
-
-    if (isFetchingNextPage && current.isFetchingNextPage) {
-      return current;
-    }
-    if (isFetchingPreviousPage && current.isFetchingPreviousPage) {
-      return current;
-    }
-
-    if (direction == FetchDirection.forward &&
-        (opts.getNextPageParam == null || !hasPrevData)) {
-      return current;
-    }
-    if (direction == FetchDirection.backward &&
-        (opts.getPreviousPageParam == null || !hasPrevData)) {
-      return current;
-    }
-
-    final pending = InfiniteQueryResult<T>(
-      key: cacheKey,
-      status: hasPrevData ? QueryStatus.success : QueryStatus.pending,
-      data: currentData,
-      isFetching: true,
-      error: null,
-      isFetchingNextPage: isFetchingNextPage,
-      isFetchingPreviousPage: isFetchingPreviousPage,
-      isRefetching: !isFetchingNextPage && !isFetchingPreviousPage,
-      isRefetchError: false,
-      isFetchNextPageError: false,
-      isFetchPreviousPageError: false,
-      hasNextPage: hasNextPage(opts, currentData),
-      hasPreviousPage: hasPreviousPage(opts, currentData),
-      dataUpdatedAt: current.dataUpdatedAt,
-      isPlaceholderData: current.isPlaceholderData,
-      failureCount: current.failureCount,
-      failureReason: current.failureReason,
-      refetch: ({bool? throwOnError}) => fetch(throwOnError: throwOnError),
-      fetchMeta: meta,
-      fetchNextPage: fetchNextPage,
-      fetchPreviousPage: fetchPreviousPage,
-    );
-
-    // Share in-flight fetches for the initial/refetch flow (no direction)
-    if (direction == null &&
-        cacheEntry?.queryFnRunning != null &&
-        !cacheEntry!.queryFnRunning!.isCompleted &&
-        !cacheEntry.queryFnRunning!.hasError) {
-      try {
-        await cacheEntry.queryFnRunning;
-      } catch (_) {
-        // ignore, final cache state will be read below
-      }
-      final cachedResult = QueryClient.instance.queryCache[cacheKey]?.result;
-      if (cachedResult is InfiniteQueryResult<T>) {
-        return cachedResult;
-      }
-      if (cachedResult is QueryResult<List<T>>) {
-        return _coerceResult(cachedResult);
-      }
-      return current;
-    }
-
-    TrackedFuture<T?>? tracked;
-    if (direction == null) {
-      final retryer = Retryer<T?>(
-        fn: () async => await opts.pageQueryFn(opts.initialPageParam),
-        retry: opts.retry ?? QueryClient.instance.defaultOptions.queries.retry,
-        retryDelay: opts.retryDelay ??
-            QueryClient.instance.defaultOptions.queries.retryDelay,
-      );
-      tracked = TrackedFuture<T?>(retryer.start());
-      QueryClient.instance.queryCache[cacheKey] = QueryCacheEntry(
-        pending,
-        DateTime.now(),
-        queryFnRunning: tracked,
-      );
-
-      try {
-        final value = await tracked;
-        if (value == null) return current;
-        final queryResult = InfiniteQueryResult<T>(
-          key: cacheKey,
-          status: QueryStatus.success,
-          data: [value],
-          isFetching: false,
-          error: null,
-          isFetchingNextPage: false,
-          isFetchingPreviousPage: false,
-          isRefetching: false,
-          isRefetchError: false,
-          isFetchNextPageError: false,
-          isFetchPreviousPageError: false,
-          hasNextPage: hasNextPage(opts, [value]),
-          hasPreviousPage: hasPreviousPage(opts, [value]),
-          dataUpdatedAt: DateTime.now().millisecondsSinceEpoch,
-          isPlaceholderData: false,
-          refetch: ({bool? throwOnError}) => fetch(throwOnError: throwOnError),
-          fetchMeta: meta,
-          fetchNextPage: fetchNextPage,
-          fetchPreviousPage: fetchPreviousPage,
-        );
-        QueryClient.instance.queryCache[cacheKey] =
-            QueryCacheEntry(queryResult, DateTime.now());
-        QueryClient.instance.queryCache.config.onSuccess?.call([value]);
-        return queryResult;
-      } catch (e) {
-        final failureCount = retryer.failureCount;
-        final queryResult = InfiniteQueryResult<T>(
-          key: cacheKey,
-          status: QueryStatus.error,
-          data: currentData,
-          isFetching: false,
-          error: e,
-          isFetchingNextPage: false,
-          isFetchingPreviousPage: false,
-          isRefetching: false,
-          isRefetchError: true,
-          isFetchNextPageError: false,
-          isFetchPreviousPageError: false,
-          hasNextPage: hasNextPage(opts, currentData),
-          hasPreviousPage: hasPreviousPage(opts, currentData),
-          dataUpdatedAt: current.dataUpdatedAt,
-          isPlaceholderData: current.isPlaceholderData,
-          failureCount: failureCount,
-          failureReason: e,
-          refetch: ({bool? throwOnError}) => fetch(throwOnError: throwOnError),
-          fetchMeta: meta,
-          fetchNextPage: fetchNextPage,
-          fetchPreviousPage: fetchPreviousPage,
-        );
-        QueryClient.instance.queryCache[cacheKey] =
-            QueryCacheEntry(queryResult, DateTime.now());
-        QueryClient.instance.queryCache.config.onError?.call(e);
-        if (throwOnError == true) rethrow;
-        return queryResult;
-      }
-    }
-
-    QueryClient.instance.queryCache[cacheKey] =
-        QueryCacheEntry(pending, DateTime.now());
-    // Notify observers of pending/isFetchingNextPage state immediately so the
-    // deduplication check (current.isFetchingNextPage) sees the updated value
-    // before a second fetchNextPage() call is made.
-    onQueryUpdate();
-
-    try {
-      List<T> newData = <T>[];
-
-      if (direction == FetchDirection.forward) {
-        final nextParam = opts.getNextPageParam!(currentData.last);
-        if (nextParam == null) return current;
-        final pageData = await _fetchInfinitePage(
-          opts,
-          nextParam,
-          currentData,
-          meta: meta,
-          isFetchingNextPage: true,
-          isFetchingPreviousPage: false,
-        );
-        if (pageData == null) return current;
-        newData = [...currentData, pageData];
-      } else if (direction == FetchDirection.backward) {
-        final prevParam = opts.getPreviousPageParam!(currentData.first);
-        if (prevParam == null) return current;
-        final pageData = await _fetchInfinitePage(
-          opts,
-          prevParam,
-          currentData,
-          meta: meta,
-          isFetchingNextPage: false,
-          isFetchingPreviousPage: true,
-        );
-        if (pageData == null) return current;
-        newData = [pageData, ...currentData];
-      } else {
-        newData = await _refetchAllPages(opts, currentData);
-      }
-
-      final queryResult = InfiniteQueryResult<T>(
-        key: cacheKey,
-        status: QueryStatus.success,
-        data: newData,
-        isFetching: false,
-        error: null,
-        isFetchingNextPage: false,
-        isFetchingPreviousPage: false,
-        isRefetching: false,
-        isRefetchError: false,
-        isFetchNextPageError: false,
-        isFetchPreviousPageError: false,
-        hasNextPage: hasNextPage(opts, newData),
-        hasPreviousPage: hasPreviousPage(opts, newData),
-        dataUpdatedAt: DateTime.now().millisecondsSinceEpoch,
-        isPlaceholderData: false,
-        refetch: ({bool? throwOnError}) => fetch(throwOnError: throwOnError),
-        fetchMeta: meta,
-        fetchNextPage: fetchNextPage,
-        fetchPreviousPage: fetchPreviousPage,
-      );
-
-      QueryClient.instance.queryCache[cacheKey] =
-          QueryCacheEntry(queryResult, DateTime.now());
-      QueryClient.instance.queryCache.config.onSuccess?.call(newData);
-      return queryResult;
-    } catch (e) {
-      final cached = QueryClient.instance.queryCache[cacheKey]?.result;
-      var failureCount = current.failureCount;
-      Object? failureReason = e;
-      if (cached is InfiniteQueryResult) {
-        failureCount = cached.failureCount;
-        failureReason = cached.failureReason ?? e;
-      }
-      final errorData =
-          isFetchingNextPage || isFetchingPreviousPage ? <T>[] : currentData;
-      final queryResult = InfiniteQueryResult<T>(
-        key: cacheKey,
-        status: QueryStatus.error,
-        data: errorData,
-        isFetching: false,
-        error: e,
-        isFetchingNextPage: false,
-        isFetchingPreviousPage: false,
-        isRefetching: false,
-        isRefetchError: true,
-        isFetchNextPageError: isFetchingNextPage,
-        isFetchPreviousPageError: isFetchingPreviousPage,
-        hasNextPage: hasNextPage(opts, currentData),
-        hasPreviousPage: hasPreviousPage(opts, currentData),
-        dataUpdatedAt: current.dataUpdatedAt,
-        isPlaceholderData: current.isPlaceholderData,
-        failureCount: failureCount,
-        failureReason: failureReason,
-        refetch: ({bool? throwOnError}) => fetch(throwOnError: throwOnError),
-        fetchMeta: meta,
-        fetchNextPage: fetchNextPage,
-        fetchPreviousPage: fetchPreviousPage,
-      );
-      QueryClient.instance.queryCache[cacheKey] =
-          QueryCacheEntry(queryResult, DateTime.now());
-      QueryClient.instance.queryCache.config.onError?.call(e);
-      if (throwOnError == true) rethrow;
-      return queryResult;
-    }
-  }
-
-  Future<T?> _fetchInfinitePage(
-    InfiniteQueryOptions<T> opts,
-    int pageParam,
-    List<T> currentData, {
-    FetchMeta? meta,
-    required bool isFetchingNextPage,
-    required bool isFetchingPreviousPage,
-  }) async {
-    final retryer = Retryer<T?>(
-      fn: () async => await opts.pageQueryFn(pageParam),
-      retry: opts.retry ?? QueryClient.instance.defaultOptions.queries.retry,
-      retryDelay: opts.retryDelay ??
-          QueryClient.instance.defaultOptions.queries.retryDelay,
-    );
-
-    try {
-      return await retryer.start();
-    } catch (e) {
-      final cacheKey = queryKeyToCacheKey(opts.queryKey);
-      final errorData =
-          isFetchingNextPage || isFetchingPreviousPage ? <T>[] : currentData;
-      final failRes = InfiniteQueryResult<T>(
-        key: cacheKey,
-        status: QueryStatus.error,
-        data: errorData,
-        isFetching: false,
-        error: e,
-        isFetchingNextPage: isFetchingNextPage,
-        isFetchingPreviousPage: isFetchingPreviousPage,
-        isRefetching: false,
-        isRefetchError: true,
-        isFetchNextPageError: isFetchingNextPage,
-        isFetchPreviousPageError: isFetchingPreviousPage,
-        hasNextPage: hasNextPage(opts, currentData),
-        hasPreviousPage: hasPreviousPage(opts, currentData),
-        failureCount: retryer.failureCount,
-        failureReason: e,
-        refetch: ({bool? throwOnError}) => fetch(throwOnError: throwOnError),
-        fetchMeta: meta,
-        fetchNextPage: fetchNextPage,
-        fetchPreviousPage: fetchPreviousPage,
-      );
-      QueryClient.instance.queryCache[cacheKey] =
-          QueryCacheEntry(failRes, DateTime.now());
-      rethrow;
-    }
-  }
-
-  Future<List<T>> _refetchAllPages(
-      InfiniteQueryOptions<T> opts, List<T> currentData) async {
-    final List<T> data = [];
-    final int pageCount = currentData.isNotEmpty ? currentData.length : 1;
-    int? pageParam = opts.initialPageParam;
-
-    for (var i = 0; i < pageCount; i++) {
-      final pageData = await _fetchInfinitePage(
-        opts,
-        pageParam!,
-        currentData,
-        isFetchingNextPage: false,
-        isFetchingPreviousPage: false,
-      );
-      if (pageData == null) break;
-      data.add(pageData);
-
-      if (opts.getNextPageParam == null) break;
-      final nextParam = opts.getNextPageParam!(pageData);
-      if (nextParam == null) break;
-      pageParam = nextParam;
-    }
-
-    return data;
   }
 
   @override
@@ -512,13 +254,18 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
       }
     }
 
-    final fetchDirection = parentResult.fetchMeta?.fetchMore?.direction;
+    // ── React parity: read direction from Query.fetchMeta (canonical in-flight
+    // state) rather than from the cached result's fetchMeta.
+    //
+    // When a plain refetch fires (e.g. stale-on-mount), Query._fetchMeta is
+    // null/idle, so isFetchingNextPage is correctly false — even if the last
+    // cached result carried direction=forward from a prior fetchNextPage().
+    final fetchDirection = currentQuery?.fetchMeta?.fetchMore?.direction;
 
     final isFetchNextPageError =
         parentResult.isError && fetchDirection == FetchDirection.forward;
     final isFetchingNextPage =
         parentResult.isFetching && fetchDirection == FetchDirection.forward;
-
     final isFetchPreviousPageError =
         parentResult.isError && fetchDirection == FetchDirection.backward;
     final isFetchingPreviousPage =

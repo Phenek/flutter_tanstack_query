@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:tanstack_query/tanstack_query.dart';
+import 'infinite_query_behavior.dart';
 import 'removable.dart';
 
 /// Minimal `Query` implementation to centralize fetch and observer logic.
@@ -14,6 +15,15 @@ class Query<T> extends Removable {
   Retryer<T>? _retryer;
 
   FetchMeta? _fetchMeta;
+
+  /// The [FetchMeta] for the currently in-flight fetch, or `null` when idle.
+  ///
+  /// Mirrors React's `query.state.fetchMeta` — set synchronously before any
+  /// `await`, and cleared when the fetch settles.  [InfiniteQueryObserver]
+  /// reads this instead of the cached result's [fetchMeta] so that
+  /// `isFetchingNextPage` is `false` during a plain refetch even when the
+  /// last cached result carried `direction=forward`.
+  FetchMeta? get fetchMeta => _fetchMeta;
 
   Query(this.client, this.options)
       : cacheKey = queryKeyToCacheKey(options.queryKey) {
@@ -71,38 +81,71 @@ class Query<T> extends Removable {
   }
 
   /// Fetch using Retryer with retry configuration from options.
-  Future<T?> fetch({FetchMeta? meta}) async {
-    _fetchMeta = meta;
-    // If there's already an in-flight retryer return its promise
+  ///
+  /// Mirrors React's `Query.fetch()`:
+  /// 1. Dedup: if a retryer is already pending, return its promise (the
+  ///    [Retryer.start] guard handles this synchronously).
+  /// 2. Build a [FetchContext] and call [QueryBehavior.onFetch] so behaviors
+  ///    (e.g. [InfiniteQueryBehavior]) can replace [FetchContext.fetchFn].
+  /// 3. Set [_fetchMeta] synchronously — observers read it via [fetchMeta]
+  ///    to compute `isFetchingNextPage` without touching the stale cache.
+  /// 4. Write a pending result to the cache and notify observers — all before
+  ///    any `await`.
+  /// 5. Wrap the (possibly behavior-replaced) fetchFn in a single [Retryer].
+  Future<T?> fetch({FetchMeta? meta, dynamic behavior}) async {
+    // ── 1. Synchronous dedup (mirrors React `fetchStatus !== 'idle'`) ─────
     if (_retryer != null && _retryer!.status() == 'pending') {
-      return _retryer!.start();
+      // continueRetry() is a no-op when not paused, safe to call unconditionally.
+      _retryer!.continueRetry();
+      return _retryer!.start(); // returns in-flight promise (no new Retryer)
     }
 
-    Future<T> fn() async {
-      // Execute the query function
-      return await options.queryFn();
+    // ── 2. Build FetchContext and invoke behavior hook ────────────────────
+    final prevEntry = client.queryCache[cacheKey];
+    final context = FetchContext<T>(
+      fetchFn: options.queryFn,
+      meta: meta,
+      options: options,
+      currentEntry: prevEntry,
+    );
+    final effectiveBehavior = (behavior as QueryBehavior<T>?) ?? options.behavior;
+    effectiveBehavior?.onFetch(context, this);
+
+    // ── 3. Set fetchMeta synchronously ────────────────────────────────────
+    _fetchMeta = meta;
+
+    // ── 4. Write pending result and notify before any await ───────────────
+    QueryResult<T>? prevRes;
+    try {
+      prevRes = prevEntry?.result as QueryResult<T>?;
+    } catch (_) {
+      // Ignore mismatched cached types (e.g. InfiniteQueryResult<Object>
+      // when this Query is typed List<int>).
     }
+    final hasPrevData = prevRes != null && prevRes.data != null;
 
     TrackedFuture<T>? running;
 
     _retryer = Retryer<T>(
-      fn: fn,
+      fn: context.fetchFn,
       retry: options.retry ?? client.defaultOptions.queries.retry,
       retryDelay:
           options.retryDelay ?? client.defaultOptions.queries.retryDelay,
       onFail: (failureCount, error) {
-        // Update cache to reflect the failure count/reason while still retrying
-        final prevEntry = client.queryCache[cacheKey];
-        final prevRes = prevEntry?.result as QueryResult<T>?;
-        final hasPrevData = prevRes != null && prevRes.data != null;
+        final prevEntry2 = client.queryCache[cacheKey];
+        QueryResult<T>? prevRes2;
+        try {
+          prevRes2 = prevEntry2?.result as QueryResult<T>?;
+        } catch (_) {}
+        final hasPrev2 = prevRes2 != null && prevRes2.data != null;
 
         final failRes = QueryResult<T>(
             cacheKey,
-            hasPrevData ? prevRes.status : QueryStatus.pending,
-            hasPrevData ? prevRes.data : null,
+            hasPrev2 ? prevRes2.status : QueryStatus.pending,
+            hasPrev2 ? prevRes2.data : null,
             error,
             isFetching: true,
-            dataUpdatedAt: hasPrevData ? prevRes.dataUpdatedAt : null,
+            dataUpdatedAt: hasPrev2 ? prevRes2.dataUpdatedAt : null,
             isPlaceholderData: false,
             failureCount: failureCount,
             failureReason: error,
@@ -113,11 +156,6 @@ class Query<T> extends Removable {
         _notifyObservers();
       },
     );
-
-    // Mark as pending in cache and notify observers immediately
-    final prevEntry = client.queryCache[cacheKey];
-    final prevRes = prevEntry?.result as QueryResult<T>?;
-    final hasPrevData = prevRes != null && prevRes.data != null;
 
     final pending = QueryResult<T>(
         cacheKey,
@@ -131,14 +169,16 @@ class Query<T> extends Removable {
         failureReason: null,
         fetchMeta: _fetchMeta);
 
-    // Wrap retryer.start() in a TrackedFuture so other code can inspect queryFnRunning
     running = TrackedFuture<T>(_retryer!.start());
     client.queryCache[cacheKey] =
         QueryCacheEntry<T>(pending, DateTime.now(), queryFnRunning: running);
     _notifyObservers();
 
+    // ── 5. Await the single retryer ───────────────────────────────────────
     try {
       final value = await running;
+      final settledFetchMeta = _fetchMeta;
+      _fetchMeta = null; // clear before notify so createResult sees idle state
       final queryResult = QueryResult<T>(
           cacheKey, QueryStatus.success, value, null,
           isFetching: false,
@@ -146,32 +186,31 @@ class Query<T> extends Removable {
           isPlaceholderData: false,
           failureCount: 0,
           failureReason: null,
-          fetchMeta: _fetchMeta);
+          fetchMeta: settledFetchMeta);
       client.queryCache[cacheKey] =
           QueryCacheEntry<T>(queryResult, DateTime.now());
       client.queryCache.config.onSuccess?.call(value);
       _notifyObservers();
-      // Clear the retryer reference since the fetch has settled
       _retryer = null;
       return value;
     } catch (e) {
       final failureCount = _retryer?.failureCount ?? 0;
+      final settledFetchMeta = _fetchMeta;
+      _fetchMeta = null; // clear before notify so createResult sees idle state
       final errorRes = QueryResult<T>(cacheKey, QueryStatus.error, null, e,
           isFetching: false,
           dataUpdatedAt: null,
           isPlaceholderData: false,
           failureCount: failureCount,
           failureReason: e,
-          fetchMeta: _fetchMeta);
+          fetchMeta: settledFetchMeta);
       client.queryCache[cacheKey] =
           QueryCacheEntry<T>(errorRes, DateTime.now());
       client.queryCache.config.onError?.call(e);
       _notifyObservers();
-      // Clear the retryer reference since the fetch has settled
       _retryer = null;
       rethrow;
     } finally {
-      // Ensure GC is scheduled after any fetch completes, matching JS behavior
       scheduleGc();
     }
   }

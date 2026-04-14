@@ -1,5 +1,12 @@
 import 'types.dart';
 
+// Forward declaration — implemented in infinite_query_behavior.dart.
+// Using an `abstract` base here avoids a circular import: query_types ← query_observer ← infinite_query_behavior.
+abstract class QueryBehavior<T> {
+  const QueryBehavior();
+  void onFetch(dynamic context, dynamic query);
+}
+
 /// Typedef for a function that returns initial data (used by `initialData`).
 typedef InitialDataFn<T> = T? Function();
 
@@ -76,6 +83,12 @@ class QueryOptions<T> {
   /// Can be a value (`T`) or a `PlaceholderDataFn<T>` that receives `(previousValue, previousQuery)`.
   final Object? placeholderData;
 
+  /// Optional fetch behavior hook. Implementations replace the default [queryFn]
+  /// with a custom async closure before [Query] creates its [Retryer].
+  /// [InfiniteQueryObserver] injects [InfiniteQueryBehavior] here (mirroring
+  /// React's `InfiniteQueryObserver.setOptions({ behavior: infiniteQueryBehavior() })`).
+  final QueryBehavior<T>? behavior;
+
   QueryOptions({
     required this.queryFn,
     required this.queryKey,
@@ -91,6 +104,7 @@ class QueryOptions<T> {
     this.initialData,
     this.initialDataUpdatedAt,
     this.placeholderData,
+    this.behavior,
   });
 
   QueryOptions<T> copyWith({
@@ -108,6 +122,7 @@ class QueryOptions<T> {
     Object? initialData,
     Object? initialDataUpdatedAt,
     Object? placeholderData,
+    QueryBehavior<T>? behavior,
   }) {
     return QueryOptions<T>(
       queryFn: queryFn ?? this.queryFn,
@@ -124,6 +139,7 @@ class QueryOptions<T> {
       initialData: initialData ?? this.initialData,
       initialDataUpdatedAt: initialDataUpdatedAt ?? this.initialDataUpdatedAt,
       placeholderData: placeholderData ?? this.placeholderData,
+      behavior: behavior ?? this.behavior,
     );
   }
 

@@ -23,3 +23,4 @@ export 'src/core/query_types.dart';
 export 'src/core/online_manager.dart';
 export 'src/core/focus_manager.dart';
 export 'src/core/utils.dart';
+export 'src/core/infinite_query_behavior.dart';

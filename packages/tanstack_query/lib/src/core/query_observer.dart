@@ -353,9 +353,10 @@ class QueryObserver<TQueryFnData, TError, TData>
   }
 
   void _notify() {
+    final result = getCurrentResult();
     notifyAll((listener) {
       try {
-        (listener as dynamic)(_currentResult);
+        (listener as dynamic)(result);
       } catch (_) {}
     });
   }

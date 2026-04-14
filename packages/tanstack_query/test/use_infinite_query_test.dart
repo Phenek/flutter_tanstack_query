@@ -1121,4 +1121,277 @@ void main() {
         QueryClientProvider(client: client, child: MaterialApp(home: Container())));
     client.queryCache.clear();
   });
+
+  testWidgets(
+      'should not report isFetchingNextPage=true when refetching first page on remount',
+      (WidgetTester tester) async {
+    // Regression: after a fetchNextPage() call the cache stores the result with
+    // fetchMeta.direction = forward.  On the next mount (or stale refetch),
+    // _clearStaleDataOnMount synthetically forces isFetching=true in
+    // QueryObserver.createResult.  InfiniteQueryObserver.createResult was then
+    // computing `isFetchingNextPage = parentResult.isFetching && direction==forward`,
+    // yielding true even though we are fetching the *first* page, not the next one.
+    const keyList = ['infinite', 'refetch-not-next-page'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+    final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
+
+    // Seed the cache with a result that has previously fetched page 2 (next page).
+    // Its fetchMeta carries direction=forward, simulating the post-fetchNextPage state.
+    final seeded = InfiniteQueryResult<int>(
+      key: cacheKey,
+      status: QueryStatus.success,
+      data: <int>[1, 2],
+      isFetching: false,
+      error: null,
+      isFetchingNextPage: false,
+      fetchMeta:
+          const FetchMeta(fetchMore: FetchMore(direction: FetchDirection.forward)),
+    );
+    // Use an old timestamp so staleTime=0 considers it stale and triggers a refetch.
+    client.queryCache[cacheKey] = QueryCacheEntry(
+      seeded,
+      DateTime.now().subtract(const Duration(milliseconds: 50)),
+    );
+
+    await tester.pumpWidget(QueryClientProvider(
+      client: client,
+      child: MaterialApp(
+        home: HookBuilder(builder: (context) {
+          final result = useInfiniteQuery<int>(
+            queryKey: keyList,
+            queryFn: (page) async {
+              await Future.delayed(const Duration(milliseconds: 10));
+              return page;
+            },
+            initialPageParam: 1,
+            getNextPageParam: (lastPage) => lastPage < 3 ? lastPage + 1 : null,
+            staleTime: 0,
+          );
+          holder.value = result;
+          return Container();
+        }),
+      ),
+    ));
+
+    // First frame: stale data detected, refetch starts — must NOT show isFetchingNextPage.
+    await tester.pump();
+    expect(holder.value, isNotNull);
+    expect(holder.value!.isFetchingNextPage, isFalse,
+        reason:
+            'Refetching the first page on mount must not set isFetchingNextPage=true '
+            'even when the cached fetchMeta carries direction=forward');
+
+    // Let the refetch complete and verify clean state.
+    await tester.pumpAndSettle();
+    expect(holder.value!.status, equals(QueryStatus.success));
+    expect(holder.value!.isFetchingNextPage, isFalse);
+    expect(holder.value!.isFetchingPreviousPage, isFalse);
+  });
+
+  // ─── Rapid fetchNextPage deduplication tests ────────────────────────────────
+
+  testWidgets(
+      'should call queryFn exactly once when fetchNextPage is fired 7 times rapidly',
+      (WidgetTester tester) async {
+    var page2Calls = 0;
+    final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
+
+    await tester.pumpWidget(QueryClientProvider(
+      client: client,
+      child: MaterialApp(
+        home: HookBuilder(builder: (context) {
+          final result = useInfiniteQuery<int>(
+            queryKey: ['infinite', 'rapid-dedup'],
+            queryFn: (page) async {
+              if (page == 2) page2Calls++;
+              await Future.delayed(const Duration(milliseconds: 40));
+              return page;
+            },
+            initialPageParam: 1,
+            getNextPageParam: (last) => last < 3 ? last + 1 : null,
+          );
+          holder.value = result;
+          return Container();
+        }),
+      ),
+    ));
+
+    await tester.pumpAndSettle();
+    expect(holder.value!.data, equals([1]));
+
+    // Simulate fast scroll: 7 rapid calls, none awaited
+    for (var i = 0; i < 7; i++) {
+      holder.value!.fetchNextPage?.call();
+    }
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(page2Calls, equals(1),
+        reason: 'queryFn for page 2 must be called exactly once regardless of '
+            'how many fetchNextPage calls were fired');
+    expect(holder.value!.data, equals([1, 2]));
+    expect(holder.value!.isFetchingNextPage, isFalse,
+        reason: 'isFetchingNextPage must be false after page 2 settles');
+  });
+
+  testWidgets(
+      'isFetchingNextPage should be false after last page is fetched with rapid calls',
+      (WidgetTester tester) async {
+    var page3Calls = 0;
+    final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
+
+    await tester.pumpWidget(QueryClientProvider(
+      client: client,
+      child: MaterialApp(
+        home: HookBuilder(builder: (context) {
+          final result = useInfiniteQuery<int>(
+            queryKey: ['infinite', 'last-page-rapid'],
+            queryFn: (page) async {
+              if (page == 3) page3Calls++;
+              await Future.delayed(const Duration(milliseconds: 30));
+              return page;
+            },
+            initialPageParam: 1,
+            getNextPageParam: (last) => last < 3 ? last + 1 : null,
+          );
+          holder.value = result;
+          return Container();
+        }),
+      ),
+    ));
+
+    // Load pages 1 and 2
+    await tester.pumpAndSettle();
+    holder.value!.fetchNextPage?.call();
+    await tester.pumpAndSettle();
+    expect(holder.value!.data, equals([1, 2]));
+    expect(holder.value!.hasNextPage, isTrue);
+
+    // 7 rapid calls to fetch last page
+    for (var i = 0; i < 7; i++) {
+      holder.value!.fetchNextPage?.call();
+    }
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(page3Calls, equals(1),
+        reason: 'queryFn for the last page must be called exactly once');
+    expect(holder.value!.data, equals([1, 2, 3]));
+    expect(holder.value!.hasNextPage, isFalse);
+    expect(holder.value!.isFetchingNextPage, isFalse,
+        reason: 'isFetchingNextPage must be false after the last page settles');
+  });
+
+  testWidgets(
+      'fetchNextPage called after last page via stale ref should be a no-op',
+      (WidgetTester tester) async {
+    var extraCalls = 0;
+    final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
+    const keyList = ['infinite', 'post-last-page'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+
+    await tester.pumpWidget(QueryClientProvider(
+      client: client,
+      child: MaterialApp(
+        home: HookBuilder(builder: (context) {
+          final result = useInfiniteQuery<int>(
+            queryKey: keyList,
+            queryFn: (page) async {
+              if (page > 2) extraCalls++;
+              await Future.delayed(const Duration(milliseconds: 5));
+              return page;
+            },
+            initialPageParam: 1,
+            getNextPageParam: (last) => last < 2 ? last + 1 : null,
+          );
+          holder.value = result;
+          return Container();
+        }),
+      ),
+    ));
+
+    // Load page 1 and 2 (last page)
+    await tester.pumpAndSettle();
+    holder.value!.fetchNextPage?.call();
+    await tester.pumpAndSettle();
+
+    expect(holder.value!.data, equals([1, 2]));
+    expect(holder.value!.hasNextPage, isFalse);
+    expect(extraCalls, equals(0));
+
+    // Simulate a stale scroll-listener: the cached result object always has
+    // the observer's fetchNextPage method (set in _fetchInfinite's success
+    // path), even when the hook result has fetchNextPage=null (hasNextPage=false).
+    // Calling it is exactly what a scroll listener with a stale closure does.
+    final cachedResult =
+        client.queryCache[cacheKey]!.result as InfiniteQueryResult<int>;
+    cachedResult.fetchNextPage?.call();
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(extraCalls, equals(0),
+        reason: 'No extra queryFn calls after the last page is loaded');
+    expect(holder.value!.isFetchingNextPage, isFalse,
+        reason: 'isFetchingNextPage must not get stuck from a stale-ref call');
+    expect(holder.value!.hasNextPage, isFalse);
+  });
+
+  testWidgets(
+      'rapid fetchNextPage via captured ref: isFetchingNextPage false and data stable',
+      (WidgetTester tester) async {
+    // Regression: simulates a scroll listener holding a reference to
+    // fetchNextPage that fires 10 times while the last page loads.
+    final queryCalls = <int>[];
+    final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
+
+    await tester.pumpWidget(QueryClientProvider(
+      client: client,
+      child: MaterialApp(
+        home: HookBuilder(builder: (context) {
+          final result = useInfiniteQuery<int>(
+            queryKey: ['infinite', 'rapid-last'],
+            queryFn: (page) async {
+              queryCalls.add(page);
+              await Future.delayed(const Duration(milliseconds: 50));
+              return page;
+            },
+            initialPageParam: 1,
+            getNextPageParam: (last) => last < 2 ? last + 1 : null,
+          );
+          holder.value = result;
+          return Container();
+        }),
+      ),
+    ));
+
+    // Load page 1
+    await tester.pumpAndSettle();
+    expect(holder.value!.data, equals([1]));
+    queryCalls.clear();
+
+    // Capture the ref — like a scroll-listener closure would
+    final fetchNextRef = holder.value!.fetchNextPage!;
+
+    // Fire 10 times in one frame
+    for (var i = 0; i < 10; i++) {
+      fetchNextRef();
+    }
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(
+      queryCalls.where((p) => p == 2).length,
+      equals(1),
+      reason: 'page 2 queryFn must be called exactly once despite 10 rapid calls',
+    );
+    expect(holder.value!.data, equals([1, 2]));
+    expect(holder.value!.hasNextPage, isFalse);
+    expect(holder.value!.isFetchingNextPage, isFalse,
+        reason: 'isFetchingNextPage must be false after last page settles');
+    expect(holder.value!.status, equals(QueryStatus.success));
+  });
 }
