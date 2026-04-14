@@ -908,6 +908,88 @@ void main() {
     queryClient.queryCache.clear();
   });
 
+  // Regression test for the GC bug: after clear() + reload(), an orphaned
+  // Query instance (Q1, discarded by clear()) was scheduling a new GC timer
+  // when the observer detached from it to join the new Query (Q2). 5 minutes
+  // later Q1's timer fired and evicted Q2's live cache entry, even though
+  // the widget was still mounted.
+  //
+  // The fix mirrors React: QueryCache.remove() takes a Query object and
+  // performs an identity check (`identical(queryInMap, query)`), so an orphaned
+  // Q1 calling remove(Q1) is a no-op when Q2 is the registered instance.
+  testWidgets(
+      'should NOT garbage collect an active query after clear() + reload()',
+      (WidgetTester tester) async {
+    final holder = ValueNotifier<QueryResult<String>?>(null);
+    final keyList = ['gc-after-clear'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+    var fetchCount = 0;
+
+    // Use a short gcTime so that if the bug is present, GC fires quickly.
+    const shortGcTime = 100; // ms
+
+    await tester.pumpWidget(QueryClientProvider(
+        client: queryClient,
+        child: MaterialApp(
+          home: HookBuilder(builder: (context) {
+            final result = useQuery<String>(
+              queryKey: keyList,
+              queryFn: () async {
+                fetchCount++;
+                await Future.delayed(Duration(milliseconds: 5));
+                return 'data-$fetchCount';
+              },
+              gcTime: shortGcTime,
+            );
+            holder.value = result;
+            return Container();
+          }),
+        )));
+
+    // Wait for the initial fetch to complete (Q1 is now active).
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(holder.value!.status, equals(QueryStatus.success));
+    expect(holder.value!.data, equals('data-1'));
+
+    // invalidateQueries(exact) removes Q1, then calls Q1.notifyObserversRefetch().
+    // The observer calls _updateQuery() → build() creates Q2
+    // → Q1.removeObserver(this) → Q1 schedules a new GC timer → Q2.addObserver(this).
+    // Before the fix, Q1's GC would later evict Q2's live cache entry.
+    queryClient.invalidateQueries(queryKey: keyList, exact: true);
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    // Q2 should have fetched successfully.
+    expect(holder.value!.status, equals(QueryStatus.success));
+    expect(holder.value!.data, equals('data-2'));
+    expect(queryClient.queryCache.containsKey(cacheKey), isTrue);
+
+    // Advance time past gcTime multiple times. Before the fix, Q1's orphaned
+    // GC timer would have fired and removed Q2's cache entry by now.
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(Duration(milliseconds: shortGcTime + 20));
+    }
+
+    // The widget is still mounted → cache entry must still be present.
+    expect(
+      queryClient.queryCache.containsKey(cacheKey),
+      isTrue,
+      reason:
+          'Active query was garbage-collected while still mounted (clear+reload GC bug)',
+    );
+    expect(
+      (queryClient.queryCache[cacheKey]!.result as QueryResult<String>).data,
+      equals('data-2'),
+    );
+
+    // Cleanup: unmount and clear so no timers linger after the test.
+    await tester.pumpWidget(QueryClientProvider(
+        client: queryClient, child: MaterialApp(home: Container())));
+    queryClient.queryCache.clear();
+  });
+
   testWidgets('setQueryData should update all useQuery observers with same key',
       (WidgetTester tester) async {
     final holderA = ValueNotifier<QueryResult<int>?>(null);

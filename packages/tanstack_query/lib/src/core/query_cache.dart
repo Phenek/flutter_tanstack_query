@@ -101,22 +101,39 @@ class QueryCache extends Subscribable<QueryCacheListener> {
         callerId: callerId));
   }
 
-  /// Remove a cache entry by key and notify listeners if something was removed.
-  QueryCacheEntry? remove(String key, {String? callerId}) {
-    final removed = _cache.remove(key);
-    if (removed != null) {
+  /// Remove a query and its cache entry by Query object identity.
+  ///
+  /// Mirrors React's QueryCache.remove(query): only deletes the cache entry
+  /// and _queries slot when the registered instance IS the passed query.
+  /// This prevents orphaned Query instances (e.g., left over after a clear()
+  /// + reload()) from evicting a newer Query that took over the same key.
+  void remove(Query query, {String? callerId}) {
+    final queryInMap = _queries[query.cacheKey];
+    if (queryInMap == null) return;
+
+    // Destroy the passed query (clears its GC timer, cancels retryer).
+    // This is always safe regardless of identity — we always want to stop
+    // orphaned queries from doing further work.
+    try {
+      query.destroy();
+    } catch (_) {}
+
+    // Only delete the registered slot, fire the notification, and remove the
+    // cache entry when the identity matches — mirrors React's
+    // `if (queryInMap === query)` guard.
+    //
+    // Unlike React, Dart observers subscribe to QueryCache events directly
+    // (via _subscribeToCache), so we must NOT fire a `removed` notification
+    // for orphaned queries: an orphaned Q1 calling remove(Q1) when Q2 is the
+    // registered instance must be a silent no-op to avoid resetting live
+    // observers to pending state.
+    if (identical(queryInMap, query)) {
+      _queries.remove(query.cacheKey);
+      _cache.remove(query.cacheKey);
       _notifyListeners(QueryCacheNotifyEvent(
-          QueryCacheEventType.removed, key, removed,
+          QueryCacheEventType.removed, query.cacheKey, null,
           callerId: callerId));
     }
-    // Also remove any built Query instance
-    if (_queries.containsKey(key)) {
-      final q = _queries.remove(key);
-      try {
-        if (q != null && q is Query) q.cancel();
-      } catch (_) {}
-    }
-    return removed;
   }
 
   /// Remove entries for which [test] returns true, and notify listeners for each removed entry.
@@ -128,11 +145,11 @@ class QueryCache extends Subscribable<QueryCacheListener> {
       return shouldRemove;
     });
     for (var entry in removedEntries.entries) {
-      // If there was a built Query instance for this key, cancel and remove it
+      // If there was a built Query instance for this key, destroy and remove it.
       if (_queries.containsKey(entry.key)) {
         final q = _queries.remove(entry.key);
         try {
-          if (q != null && q is Query) q.cancel();
+          if (q != null && q is Query) q.destroy();
         } catch (_) {}
       }
       _notifyListeners(QueryCacheNotifyEvent(
@@ -142,12 +159,14 @@ class QueryCache extends Subscribable<QueryCacheListener> {
 
   /// Request a refetch for all cache entries matching [queryKey].
   ///
-  /// This will emit a `refetch` event for each matching cache entry so
-  /// listeners can trigger their refetch callbacks. An optional `callerId`
-  /// may be provided so listeners can be excluded if needed.
+  /// Mirrors React: notify observers directly through the Query object rather
+  /// than via cache events. Also fires a cache event for external subscribers.
   void refetch(List<Object> queryKey, {String? callerId}) {
     final cacheKey = queryKeyToCacheKey(queryKey);
-    for (var k in _cache.keys.where((k) => k.startsWith(cacheKey))) {
+    for (var k in _cache.keys.where((k) => k.startsWith(cacheKey)).toList()) {
+      // Direct observer notification through Query (React pattern).
+      getQuery(k)?.notifyObserversRefetch();
+      // Cache event retained for external cache subscribers.
       _notifyListeners(QueryCacheNotifyEvent(
           QueryCacheEventType.refetch, k, _cache[k],
           callerId: callerId));
@@ -155,7 +174,13 @@ class QueryCache extends Subscribable<QueryCacheListener> {
   }
 
   /// Request a refetch for a specific cache key.
+  ///
+  /// Mirrors React: notify observers directly through the Query object rather
+  /// than via cache events. Also fires a cache event for external subscribers.
   void refetchByCacheKey(String cacheKey, {String? callerId}) {
+    // Direct observer notification through Query (React pattern).
+    getQuery(cacheKey)?.notifyObserversRefetch();
+    // Cache event retained for external cache subscribers.
     _notifyListeners(QueryCacheNotifyEvent(
         QueryCacheEventType.refetch, cacheKey, _cache[cacheKey],
         callerId: callerId));
@@ -210,21 +235,21 @@ class QueryCache extends Subscribable<QueryCacheListener> {
         .toList();
   }
 
-  /// Clear all entries and notify listeners for each removal and a final `clear` event.
+  /// Clear all entries — mirrors React's QueryCache.clear().
+  ///
+  /// Iterates all registered Query instances and calls remove(query) for each,
+  /// which handles destroy + identity-safe deletion + notifications. Any
+  /// cache-only entries (no Query built) are then swept from _cache directly.
   void clear({String? callerId}) {
-    final keys = _cache.keys.toList();
-    _cache.clear();
-
-    // Cancel and remove any built Query instances to avoid leaving pending
-    // timers (GC timers) running after the cache has been cleared.
-    for (var q in _queries.values) {
-      try {
-        if (q != null && q is Query) q.cancel();
-      } catch (_) {}
+    // Snapshot so iteration is safe while remove() mutates _queries.
+    final queries = _queries.values.whereType<Query>().toList();
+    for (final q in queries) {
+      remove(q, callerId: callerId);
     }
-    _queries.clear();
-
-    for (var k in keys) {
+    // Sweep any cache entries that had no associated Query object.
+    final orphanKeys = _cache.keys.toList();
+    for (final k in orphanKeys) {
+      _cache.remove(k);
       _notifyListeners(QueryCacheNotifyEvent(
           QueryCacheEventType.removed, k, null,
           callerId: callerId));
@@ -235,6 +260,13 @@ class QueryCache extends Subscribable<QueryCacheListener> {
     // Delegate to Subscribable to iterate and safely call listeners.
     notifyAll((l) => l(event));
   }
+
+  /// Return the currently registered Query instance for [cacheKey], or null.
+  /// Used by Query.optionalRemove() to perform the identity check before GCing.
+  Query? getQuery(String cacheKey) => _queries[cacheKey] as Query?;
+
+  /// Returns a snapshot of all currently registered Query instances.
+  List<Query> getAllQueries() => _queries.values.whereType<Query>().toList();
 
   /// Build or return an existing `Query` instance for the given options.
   Query<T> build<T>(QueryClient client, QueryOptions<T> options) {

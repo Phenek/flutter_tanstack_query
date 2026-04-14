@@ -86,32 +86,38 @@ class QueryClient {
   void invalidateQueries({List<Object>? queryKey, bool exact = false}) {
     // If queryKey is null we invalidate everything.
     if (queryKey == null) {
-      final invalidatedKeys = queryCache.keys.toList();
+      // Snapshot all Query instances BEFORE clear() destroys them.
+      final queries = queryCache.getAllQueries();
       queryCache.clear();
-      for (var key in invalidatedKeys) {
-        queryCache.refetchByCacheKey(key);
+      // Notify observers on the (now-destroyed) old queries. Each observer's
+      // refetch() calls _updateQuery() which builds a fresh Query in the cache.
+      for (var q in queries) {
+        q.notifyObserversRefetch();
       }
       return;
     }
 
     if (exact) {
       final cacheKey = queryKeyToCacheKey(queryKey);
-      queryCache.remove(cacheKey);
-      queryCache.refetchByCacheKey(cacheKey);
+      final q = queryCache.getQuery(cacheKey);
+      if (q != null) {
+        queryCache.remove(q);
+        // Notify observers on the removed query; they'll rebuild via _updateQuery().
+        q.notifyObserversRefetch();
+      }
     } else {
       final cacheKey = queryKeyToCacheKey(queryKey);
-      final List<String> invalidatedKeys = [];
+      // Snapshot matching Query instances BEFORE removeWhere() destroys them.
+      final matchingQueries = queryCache.keys
+          .where((k) => k.startsWith(cacheKey))
+          .map((k) => queryCache.getQuery(k))
+          .whereType<Query>()
+          .toList();
 
-      queryCache.removeWhere((key, value) {
-        if (key.startsWith(cacheKey)) {
-          invalidatedKeys.add(key);
-          return true;
-        }
-        return false;
-      });
+      queryCache.removeWhere((key, value) => key.startsWith(cacheKey));
 
-      for (var key in invalidatedKeys) {
-        queryCache.refetchByCacheKey(key);
+      for (var q in matchingQueries) {
+        q.notifyObserversRefetch();
       }
     }
   }
@@ -132,6 +138,9 @@ class QueryClient {
         isPlaceholderData: false);
 
     queryCache[cacheKey] = QueryCacheEntry(queryResult, DateTime.now());
+    // Mirrors React: notify observers directly through the Query object
+    // (setData -> dispatch -> onQueryUpdate), not via cache events.
+    queryCache.getQuery(cacheKey)?.notifyObservers();
   }
 
   /// Synchronously updates cached infinite query data for [keys] using
@@ -161,6 +170,8 @@ class QueryClient {
     } catch (_) {}
 
     queryCache[cacheKey] = QueryCacheEntry(queryResult, DateTime.now());
+    // Mirrors React: notify observers directly through the Query object.
+    queryCache.getQuery(cacheKey)?.notifyObservers();
   }
 
   /// Clears the entire in-memory cache and notifies listeners that cached

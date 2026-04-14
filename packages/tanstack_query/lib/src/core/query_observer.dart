@@ -1,7 +1,7 @@
 import 'dart:async';
+import 'package:meta/meta.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 import 'subscribable.dart';
-import 'package:flutter/foundation.dart';
 
 /// Listener typedef used by `QueryObserver`.
 ///
@@ -19,10 +19,6 @@ class QueryObserver<TQueryFnData, TError, TData>
   QueryResult<TData> _currentResult;
   Query? _query;
   late bool _hadCacheEntryAtInit;
-
-  // Unique id used to avoid reacting to our own cache events
-  final String _callerId = DateTime.now().microsecondsSinceEpoch.toString();
-  void Function()? _cacheUnsubscribe;
 
   bool _clearStaleDataOnMount = false;
   int? _clearStaleDataOnMountAt;
@@ -43,9 +39,8 @@ class QueryObserver<TQueryFnData, TError, TData>
     if (_clearStaleDataOnMount) {
       _clearStaleDataOnMountAt = DateTime.now().millisecondsSinceEpoch;
     }
-    _updateQuery();
+    updateQuery();
     _initFromCache();
-    _subscribeToCache();
   }
 
   void setOptions(QueryOptions<TQueryFnData> newOptions) {
@@ -54,7 +49,7 @@ class QueryObserver<TQueryFnData, TError, TData>
 
     options = newOptions;
 
-    _updateQuery();
+    updateQuery();
     _updateResult();
     final nextKey = queryKeyToCacheKey(options.queryKey);
     final nextEnabled = options.enabled ?? true;
@@ -80,7 +75,7 @@ class QueryObserver<TQueryFnData, TError, TData>
   /// infinite queries.
   Future<QueryResult<TData>> fetch(
       {FetchMeta? meta, bool? throwOnError}) async {
-    _updateQuery();
+    updateQuery();
 
     if (_query == null) return _currentResult;
 
@@ -100,17 +95,34 @@ class QueryObserver<TQueryFnData, TError, TData>
 
   @override
   void onSubscribe() {
-    // Called when the first listener subscribes. Decide based on
-    // `refetchOnMount` whether to start a refetch. Delegate the policy to
-    // `shouldFetchOnMount` so behavior matches JS implementation.
-    if (shouldFetchOnMount()) {
-      _clearStaleDataOnMount =
-          _hadCacheEntryAtInit && _shouldClearStaleDataOnMount();
-      if (_clearStaleDataOnMount) {
-        _clearStaleDataOnMountAt = DateTime.now().millisecondsSinceEpoch;
+    // Mirror React: only act on the FIRST subscriber (listeners.length == 1).
+    if (listeners.length == 1) {
+      // Attach this observer to the underlying Query so it prevents GC.
+      // React does this in onSubscribe(), NOT in the constructor.
+      _query?.addObserver(this);
+
+      // Decide based on `refetchOnMount` whether to start a refetch.
+      if (shouldFetchOnMount()) {
+        _clearStaleDataOnMount =
+            _hadCacheEntryAtInit && _shouldClearStaleDataOnMount();
+        if (_clearStaleDataOnMount) {
+          _clearStaleDataOnMountAt = DateTime.now().millisecondsSinceEpoch;
+        }
+        refetch();
+      } else {
+        _updateResult();
       }
-      refetch();
     }
+  }
+
+  /// Destroy this observer: remove from the underlying Query (which will
+  /// schedule GC if no observers remain).
+  /// Mirrors React's QueryObserver.destroy().
+  void destroy() {
+    try {
+      _query?.removeObserver(this);
+      _query = null;
+    } catch (_) {}
   }
 
   bool _shouldClearStaleDataOnMount() {
@@ -178,13 +190,10 @@ class QueryObserver<TQueryFnData, TError, TData>
 
   @override
   void onUnsubscribe() {
-    try {
-      _cacheUnsubscribe?.call();
-    } catch (_) {}
-    try {
-      _query?.removeObserver(this);
-      _query = null;
-    } catch (_) {}
+    // Mirror React: only destroy when the LAST listener has unsubscribed.
+    if (!hasListeners()) {
+      destroy();
+    }
   }
 
   Future<QueryResult<TData>> refetch({bool? throwOnError}) async {
@@ -196,26 +205,38 @@ class QueryObserver<TQueryFnData, TError, TData>
     _notify();
   }
 
-  void _updateQuery() {
-    // Use QueryCache.build to obtain a Query instance and subscribe to it
+  /// Exposes the currently associated [Query] instance for subclasses.
+  /// Mirrors React: `QueryObserver.#currentQuery`.
+  @protected
+  Query? get currentQuery => _query;
+
+  /// Re-associates this observer with the correct [Query] for the current
+  /// options. Builds the query if it does not exist yet, and transfers
+  /// addObserver / removeObserver when listeners are already attached.
+  /// Mirrors React: `QueryObserver.#updateQuery()`.
+  @protected
+  void updateQuery() {
+    // Use QueryCache.build to obtain a Query instance.
     final q = _client.queryCache
         .build<TData>(_client, options as QueryOptions<TData>);
 
-    // If we had a previous query we should remove ourselves
-    // (Query itself maintains no back-reference, observers subscribe directly)
-    // Detach from previous query if different
-    if (_query != null && _query != q) {
+    if (_query == q) return; // nothing changed
+
+    // Mirror React: only manipulate observer counts when we actually have
+    // listeners. Before onSubscribe() fires, addObserver/removeObserver must
+    // NOT be called — that is onSubscribe()'s job (first-subscriber only).
+    if (hasListeners()) {
+      // Detach from the old query so it can schedule GC if needed.
       try {
-        _query!.removeObserver(this);
+        _query?.removeObserver(this);
+      } catch (_) {}
+      // Attach to the new query to prevent it from being GCed.
+      try {
+        q.addObserver(this);
       } catch (_) {}
     }
 
     _query = q;
-
-    // Attach listener to the query instance so we get updates
-    try {
-      q.addObserver(this);
-    } catch (_) {}
   }
 
   Query? _lastQueryWithDefinedData;
@@ -329,43 +350,6 @@ class QueryObserver<TQueryFnData, TError, TData>
     if (cacheEntry != null && cacheEntry.result is QueryResult) {
       _updateResult();
     }
-  }
-
-  void _handleCacheEvent(QueryCacheNotifyEvent event) {
-    if (event.cacheKey != queryKeyToCacheKey(options.queryKey)) return;
-    if (event.callerId != null && event.callerId == _callerId) return;
-
-    try {
-      if (event.type == QueryCacheEventType.removed) {
-        final cacheKey = queryKeyToCacheKey(options.queryKey);
-        _currentResult = QueryResult<TData>(
-            cacheKey, QueryStatus.pending, null, null,
-            isFetching: false);
-        _notify();
-      } else if (event.type == QueryCacheEventType.added ||
-          event.type == QueryCacheEventType.updated) {
-        final dynamic raw = event.entry?.result;
-        if (raw is QueryResult) {
-          _updateResult();
-          _notify();
-        }
-      } else if (event.type == QueryCacheEventType.refetch ||
-          (event.type == QueryCacheEventType.refetchOnWindowFocus &&
-              (options.refetchOnWindowFocus ??
-                  _client.defaultOptions.queries.refetchOnWindowFocus)) ||
-          (event.type == QueryCacheEventType.refetchOnReconnect &&
-              (options.refetchOnReconnect ??
-                  _client.defaultOptions.queries.refetchOnReconnect))) {
-        // Trigger a refetch according to the cache event and options
-        refetch();
-      }
-    } catch (e) {
-      debugPrint(e.toString());
-    }
-  }
-
-  void _subscribeToCache() {
-    _cacheUnsubscribe = _client.queryCache.subscribe(_handleCacheEvent);
   }
 
   void _notify() {

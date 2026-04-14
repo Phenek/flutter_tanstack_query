@@ -13,6 +13,7 @@ void main() {
       queries: QueryDefaultOptions(
         enabled: true,
         staleTime: 0,
+        gcTime: 60 * 1000,
         refetchOnWindowFocus: true,
         refetchOnReconnect: true,
       ),

@@ -299,7 +299,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "1.2.1"
+    version: "1.2.5"
   term_glyph:
     dependency: transitive
     description:

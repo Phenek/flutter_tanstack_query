@@ -1055,4 +1055,70 @@ void main() {
         client.queryCache[cacheKey]!.result as InfiniteQueryResult<int>;
     expect(cached.data, equals([42]));
   });
+
+  testWidgets(
+      'should NOT garbage collect an active infinite query after invalidateQueries',
+      (WidgetTester tester) async {
+    final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
+    final keyList = ['infinite', 'gc-after-invalidate'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+
+    // Use a gcTime large enough to matter in real apps (5 min default).
+    // In test we set a modest value and advance time past it — the query
+    // should survive because the observer is still mounted.
+    const gcMs = 300;
+
+    await tester.pumpWidget(QueryClientProvider(
+      client: client,
+      child: MaterialApp(
+        home: HookBuilder(
+          builder: (context) {
+            final result = useInfiniteQuery<int>(
+              queryKey: keyList,
+              queryFn: (page) async {
+                await Future.delayed(Duration(milliseconds: 5));
+                return page;
+              },
+              initialPageParam: 1,
+              gcTime: gcMs,
+            );
+            holder.value = result;
+            return Container();
+          },
+        ),
+      ),
+    ));
+
+    // let initial fetch complete
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(holder.value!.status, equals(QueryStatus.success));
+    expect(client.queryCache.containsKey(cacheKey), isTrue);
+
+    // Invalidate all queries — this is the scenario that triggered the GC bug:
+    // clear() destroys the Query registration, then refetch() routes back
+    // through InfiniteQueryObserver.fetch() which must rebuild it.
+    client.invalidateQueries();
+
+    // allow refetch triggered by invalidation to complete
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    // advance time well past gcTime — the widget is still mounted so the
+    // Query's observer set is non-empty and GC must NOT fire.
+    await tester.pump(Duration(milliseconds: gcMs * 5));
+
+    expect(
+      client.queryCache.containsKey(cacheKey),
+      isTrue,
+      reason:
+          'active infinite query must not be GC-ed while observer is mounted',
+    );
+    expect(holder.value!.status, equals(QueryStatus.success));
+
+    // Cleanup: unmount widget and clear cache so GC timers don't linger.
+    await tester.pumpWidget(
+        QueryClientProvider(client: client, child: MaterialApp(home: Container())));
+    client.queryCache.clear();
+  });
 }

@@ -54,6 +54,22 @@ class Query<T> extends Removable {
     }
   }
 
+  /// Public entry-point for QueryClient.setQueryData — mirrors React's
+  /// query.dispatch({type:'success'}) path where observers are notified
+  /// directly through the Query object rather than via cache events.
+  void notifyObservers() => _notifyObservers();
+
+  /// Notify all observers to trigger a refetch. Used by QueryCache and
+  /// QueryClient to route invalidation through the Query object rather than
+  /// firing cache events — mirrors React's QueryCache.notify pattern.
+  void notifyObserversRefetch() {
+    for (var o in List<dynamic>.from(_observers)) {
+      try {
+        o.refetch();
+      } catch (_) {}
+    }
+  }
+
   /// Fetch using Retryer with retry configuration from options.
   Future<T?> fetch({FetchMeta? meta}) async {
     _fetchMeta = meta;
@@ -211,11 +227,22 @@ class Query<T> extends Removable {
     } catch (_) {}
   }
 
+  /// Destroy this query: clear GC timer and cancel any in-flight retryer.
+  /// Called by QueryCache.remove() — mirrors React's Query.destroy().
+  @override
+  void destroy() {
+    super.destroy(); // clears GC timer
+    _retryer?.cancel();
+  }
+
   @override
   void optionalRemove() {
-    if (hasObservers) {
-      return;
-    }
-    client.queryCache.remove(cacheKey);
+    if (hasObservers) return;
+    // Mirror React: only GC when not actively fetching (fetchStatus === 'idle').
+    if (_retryer != null) return;
+    // Mirror React: pass `this` so QueryCache can do an identity check.
+    // An orphaned Query (replaced after clear()) will find a different instance
+    // registered and will be a no-op, preventing it from evicting the live entry.
+    client.queryCache.remove(this);
   }
 }

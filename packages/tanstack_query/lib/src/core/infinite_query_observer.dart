@@ -99,7 +99,30 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
   @override
   Future<QueryResult<List<T>>> fetch(
       {FetchMeta? meta, bool? throwOnError}) async {
-    return await _fetchInfinite(meta: meta, throwOnError: throwOnError);
+    // Mirror React: rebuild _query first so it is live after a clear().
+    // Without this, the orphaned Query is never re-registered in _queries and
+    // GC fires after gcTime even though observers are still attached.
+    updateQuery();
+
+    // _fetchInfinite writes directly to the cache (bypassing Query.fetch()).
+    // After it completes, notify ALL observers registered on the Query
+    // (mirrors React's Query._dispatch() → observer.onQueryUpdate() path).
+    // This fixes the multi-observer notification bug: when observer B skips
+    // its own fetch (shouldFetchOnMount returns false because the in-flight
+    // pending entry is not stale), it must still be notified when A's fetch
+    // settles.
+    try {
+      return await _fetchInfinite(meta: meta, throwOnError: throwOnError);
+    } finally {
+      final q = currentQuery;
+      if (q != null) {
+        // notifyObservers() calls onQueryUpdate() on every observer in
+        // q._observers — equivalent to React's Query._dispatch() fan-out.
+        q.notifyObservers();
+      } else {
+        onQueryUpdate();
+      }
+    }
   }
 
   Future<InfiniteQueryResult<T>> fetchNextPage() async {
@@ -270,6 +293,10 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
 
     QueryClient.instance.queryCache[cacheKey] =
         QueryCacheEntry(pending, DateTime.now());
+    // Notify observers of pending/isFetchingNextPage state immediately so the
+    // deduplication check (current.isFetchingNextPage) sees the updated value
+    // before a second fetchNextPage() call is made.
+    onQueryUpdate();
 
     try {
       List<T> newData = <T>[];
