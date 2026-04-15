@@ -1,3 +1,16 @@
+## 1.3.0 (15/04/26)
+
+**Breaking:** Full React parity for `useInfiniteQuery` — mirrors `useInfiniteQuery` from `@tanstack/react-query` exactly in types, signatures, and behavior.
+
+- **Breaking:** Introduced `InfiniteData<TData, TPageParam>` struct with `pages: List<TData>` and `pageParams: List<TPageParam>` fields. `data` on `InfiniteQueryResult` is now `InfiniteData<T, TPageParam>?` instead of `List<T>?`. Access pages via `result.data!.pages`.
+- **Breaking:** `useInfiniteQuery`, `InfiniteQueryOptions`, and `InfiniteQueryResult` now require a second type parameter `TPageParam` (e.g. `useInfiniteQuery<MyPage, int>`).
+- **Breaking:** `getNextPageParam` and `getPreviousPageParam` now accept 4 arguments — `(lastPage, allPages, lastPageParam, allPageParams)` — matching the React signature exactly.
+- **Breaking:** `setQueryInfiniteData` now takes `InfiniteData<T, TPageParam>` in its updater function instead of `List<T>`.
+- **Feat:** `pageParams` are tracked in parallel with `pages` inside `InfiniteData`, enabling full page-param history (mirrors React's `InfiniteData<TData, TPageParam>`).
+- **Feat:** Added `maxPages` option to `InfiniteQueryOptions` and `useInfiniteQuery`. Oldest pages (and their params) are trimmed when the limit is exceeded, mirroring React's `addToStart`/`addToEnd` utilities.
+- **Feat:** `Retryer` now supports `onPause` and `onContinue` callbacks and pauses the retry loop when the app loses focus or goes offline (`focusManager.isFocused()` + `onlineManager.isOnline()`), mirroring React's `canContinue` / `pause()` logic.
+- **Feat:** `defaultRetryDelay` now uses exponential backoff — `min(1000 * 2^attempt, 30000)` — matching React's formula exactly. This is the new default for `QueryDefaultOptions.retryDelay`.
+
 ## 1.2.7 (15/04/26)
 
 - Fix: `gcTime: 0` now evicts the cache immediately on unmount (next event loop tick), matching React Query's `setTimeout(..., 0)` behaviour. Previously `gcTime: 0` was silently treated as "GC disabled".
