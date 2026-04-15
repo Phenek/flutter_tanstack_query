@@ -24,7 +24,9 @@ class QueryDefaultOptions {
 
 /// Default options placeholder for mutations.
 class MutationDefaultOptions {
-  /// Default GC time (ms) for mutations. Defaults to 0 to disable GC by default.
+  /// Default GC time (ms) for mutations. Defaults to 5 minutes, matching
+  /// React Query's behaviour. Use 0 for immediate eviction on unmount,
+  /// a positive value for a custom delay, or a negative value to disable GC.
   final int gcTime;
 
   /// Default retry settings for mutations. Defaults to no retries (0).
@@ -32,7 +34,7 @@ class MutationDefaultOptions {
   final dynamic retryDelay;
 
   const MutationDefaultOptions(
-      {this.gcTime = 0, this.retry = 0, this.retryDelay = 1000});
+      {this.gcTime = 5 * 60 * 1000, this.retry = 0, this.retryDelay = 1000});
 }
 
 /// Container for default query and mutation options.

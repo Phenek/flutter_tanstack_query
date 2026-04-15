@@ -35,7 +35,7 @@ class QueryObserver<TQueryFnData, TError, TData>
     final cacheKey = queryKeyToCacheKey(options.queryKey);
     _hadCacheEntryAtInit = _client.queryCache.containsKey(cacheKey);
     _clearStaleDataOnMount =
-        _hadCacheEntryAtInit && _shouldClearStaleDataOnMount();
+        _hadCacheEntryAtInit && shouldClearStaleDataOnMount();
     if (_clearStaleDataOnMount) {
       _clearStaleDataOnMountAt = DateTime.now().millisecondsSinceEpoch;
     }
@@ -57,7 +57,7 @@ class QueryObserver<TQueryFnData, TError, TData>
     if (prevKey != nextKey) {
       _hadCacheEntryAtInit = _client.queryCache.containsKey(nextKey);
       _clearStaleDataOnMount =
-          _hadCacheEntryAtInit && _shouldClearStaleDataOnMount();
+          _hadCacheEntryAtInit && shouldClearStaleDataOnMount();
       if (_clearStaleDataOnMount) {
         _clearStaleDataOnMountAt = DateTime.now().millisecondsSinceEpoch;
       }
@@ -104,7 +104,7 @@ class QueryObserver<TQueryFnData, TError, TData>
       // Decide based on `refetchOnMount` whether to start a refetch.
       if (shouldFetchOnMount()) {
         _clearStaleDataOnMount =
-            _hadCacheEntryAtInit && _shouldClearStaleDataOnMount();
+            _hadCacheEntryAtInit && shouldClearStaleDataOnMount();
         if (_clearStaleDataOnMount) {
           _clearStaleDataOnMountAt = DateTime.now().millisecondsSinceEpoch;
         }
@@ -125,7 +125,8 @@ class QueryObserver<TQueryFnData, TError, TData>
     } catch (_) {}
   }
 
-  bool _shouldClearStaleDataOnMount() {
+  @protected
+  bool shouldClearStaleDataOnMount() {
     final staleTime =
         options.staleTime ?? _client.defaultOptions.queries.staleTime ?? 0;
     if (staleTime != 0) return false;

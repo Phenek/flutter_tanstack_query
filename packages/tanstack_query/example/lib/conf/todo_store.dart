@@ -44,6 +44,7 @@ class TodoStore {
     if (start >= _todos.length) return <Todo>[];
     final end = (start + pagination.size).clamp(0, _todos.length);
     final todos = List<Todo>.from(_todos)..sort((a, b) => b.id.compareTo(a.id));
+    print('page=${pagination.number}');
     return todos.sublist(start, end);
   }
 

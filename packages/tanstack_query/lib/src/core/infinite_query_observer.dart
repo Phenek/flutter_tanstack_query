@@ -1,3 +1,4 @@
+import 'package:meta/meta.dart';
 import 'package:tanstack_query/tanstack_query.dart';
 
 /// Observer for infinite/paginated queries.
@@ -14,6 +15,13 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
   dynamic _lastPlaceholderDataOption;
 
   InfiniteQueryObserver(super._client, super.options);
+
+  /// Mirrors React's `InfiniteQueryObserver`: never hide cached pages behind
+  /// a pending state on remount. Stale pages are shown immediately while a
+  /// background refetch runs, then replaced silently when data arrives.
+  @override
+  @protected
+  bool shouldClearStaleDataOnMount() => false;
 
   @override
   InfiniteQueryResult<T> getCurrentResult() =>

@@ -6,7 +6,9 @@ import 'dart:async';
 /// Subclasses must implement [optionalRemove] to perform the actual
 /// removal from their owning cache when GC triggers.
 abstract class Removable {
-  /// The configured GC time in milliseconds. If null or <=0, GC is disabled.
+  /// The configured GC time in milliseconds. If null or negative, GC is
+  /// disabled. A value of 0 schedules immediate eviction on the next event
+  /// loop tick (matching React Query behaviour).
   int? gcTime;
 
   Timer? _gcTimer;
@@ -20,7 +22,7 @@ abstract class Removable {
   void scheduleGc() {
     clearGcTimeout();
     final gc = gcTime;
-    if (gc == null || gc <= 0) return;
+    if (gc == null || gc < 0) return;
 
     _gcTimer = Timer(Duration(milliseconds: gc), () {
       try {
@@ -34,8 +36,8 @@ abstract class Removable {
   /// the maximum of the current value and the provided value.
   void updateGcTime(int? newGcTime, {required int defaultGcTime}) {
     final base = newGcTime ?? defaultGcTime;
-    final current = gcTime ?? 0;
-    gcTime = base > current ? base : current;
+    final current = gcTime;
+    gcTime = current == null || base > current ? base : current;
   }
 
   /// Cancel any pending GC timers.

@@ -13,8 +13,9 @@ void main() {
     // Disable default GC in tests to avoid scheduling timers unless a test
     // explicitly sets `gcTime` on the query options.
     queryClient = QueryClient(
-        defaultOptions:
-            const DefaultOptions(queries: QueryDefaultOptions(gcTime: 0)));
+        defaultOptions: const DefaultOptions(
+            queries: QueryDefaultOptions(gcTime: -1),
+            mutations: MutationDefaultOptions(gcTime: -1)));
     queryClient.queryCache.clear();
   });
 
@@ -988,6 +989,62 @@ void main() {
     await tester.pumpWidget(QueryClientProvider(
         client: queryClient, child: MaterialApp(home: Container())));
     queryClient.queryCache.clear();
+  });
+
+  testWidgets(
+      'gcTime 0 on useQuery evicts cache immediately on unmount for fresh reload',
+      (WidgetTester tester) async {
+    final keyList = ['gc-zero-fresh'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+    final holder = ValueNotifier<QueryResult<String>?>(null);
+    var fetchCount = 0;
+
+    Widget buildWidget() => QueryClientProvider(
+          client: queryClient,
+          child: MaterialApp(
+            home: HookBuilder(builder: (context) {
+              final result = useQuery<String>(
+                queryKey: keyList,
+                queryFn: () async {
+                  fetchCount++;
+                  await Future.delayed(const Duration(milliseconds: 5));
+                  return 'data-$fetchCount';
+                },
+                gcTime: 0,
+              );
+              holder.value = result;
+              return Container();
+            }),
+          ),
+        );
+
+    await tester.pumpWidget(buildWidget());
+    await tester.pumpAndSettle();
+    expect(holder.value!.status, equals(QueryStatus.success));
+    expect(holder.value!.data, equals('data-1'));
+    expect(queryClient.queryCache.containsKey(cacheKey), isTrue);
+
+    // Unmount → gcTime=0 should evict immediately
+    await tester.pumpWidget(Container());
+    await tester
+        .pump(Duration.zero); // advance fake clock so zero-duration timer fires
+    expect(queryClient.queryCache.containsKey(cacheKey), isFalse,
+        reason: 'gcTime=0 must evict immediately after unmount');
+
+    // Remount → must start fresh (pending, no cached data)
+    await tester.pumpWidget(buildWidget());
+    await tester.pump();
+    expect(holder.value!.status, equals(QueryStatus.pending),
+        reason: 'Cache cleared → second mount must start fresh');
+
+    await tester.pumpAndSettle();
+    expect(holder.value!.data, equals('data-2'));
+    expect(fetchCount, equals(2));
+
+    // Cleanup: unmount and consume the zero-duration GC timer to avoid
+    // 'pending timers' assertion at test end.
+    await tester.pumpWidget(Container());
+    await tester.pump(Duration.zero);
   });
 
   testWidgets('setQueryData should update all useQuery observers with same key',

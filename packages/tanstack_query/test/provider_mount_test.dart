@@ -9,8 +9,9 @@ void main() {
     final initialOnlineHas = onlineManager.hasListeners();
 
     final client = QueryClient(
-        defaultOptions:
-            const DefaultOptions(queries: QueryDefaultOptions(gcTime: 0)));
+        defaultOptions: const DefaultOptions(
+            queries: QueryDefaultOptions(gcTime: -1),
+            mutations: MutationDefaultOptions(gcTime: -1)));
 
     // Mount the provider
     await tester.pumpWidget(QueryClientProvider(

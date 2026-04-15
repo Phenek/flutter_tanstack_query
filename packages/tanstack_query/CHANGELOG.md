@@ -1,3 +1,10 @@
+## 1.2.7 (15/04/26)
+
+- Fix: `gcTime: 0` now evicts the cache immediately on unmount (next event loop tick), matching React Query's `setTimeout(..., 0)` behaviour. Previously `gcTime: 0` was silently treated as "GC disabled".
+- Fix: `gcTime` semantics clarified — negative values disable GC, `0` means immediate eviction, positive values delay eviction by N ms.
+- Fix: `MutationDefaultOptions.gcTime` default changed to `5 minutes` (300 000 ms), matching React Query's default for both queries and mutations.
+- Fix: Cached `InfiniteQuery` pages are now shown immediately on remount (matching React behaviour) instead of being hidden behind `status: pending` and re-fetched all at once.
+
 ## 1.2.6 (15/04/26)
 
 - Fix: Garbage collection bug where active `Query` could be evicted after `invalidateQueries()` or `clear()` — mirrors React's GC lifecycle exactly.

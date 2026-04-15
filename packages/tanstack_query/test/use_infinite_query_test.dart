@@ -11,8 +11,9 @@ void main() {
     // Disable default GC in tests to avoid scheduling timers unless a test
     // explicitly sets `gcTime` on the query options.
     client = QueryClient(
-        defaultOptions:
-            const DefaultOptions(queries: QueryDefaultOptions(gcTime: 0)));
+        defaultOptions: const DefaultOptions(
+            queries: QueryDefaultOptions(gcTime: -1),
+            mutations: MutationDefaultOptions(gcTime: -1)));
     client.queryCache.clear();
   });
 
@@ -703,7 +704,8 @@ void main() {
         equals([2]));
   });
 
-  testWidgets('staleTime 0 should not expose cached data on mount (infinite)',
+  testWidgets(
+      'staleTime 0 should show cached pages immediately on mount and refetch in background (infinite)',
       (WidgetTester tester) async {
     final keyList = ['infinite', 'stale-zero-hide'];
     final cacheKey = queryKeyToCacheKey(keyList);
@@ -743,11 +745,13 @@ void main() {
         )));
 
     await tester.pump();
-    expect(holder.value!.status, equals(QueryStatus.pending));
-    expect(holder.value!.data, equals(<int>[]));
+    // React behavior: cached pages are shown immediately (not hidden behind pending).
+    expect(holder.value!.status, equals(QueryStatus.success));
+    expect(holder.value!.data, equals(<int>[9]));
 
     await tester.pumpAndSettle();
 
+    // Background refetch completed; fresh data replaces stale cache.
     expect(called, isTrue);
     expect(holder.value!.status, equals(QueryStatus.success));
     expect(holder.value!.data, equals([1]));
@@ -944,6 +948,70 @@ void main() {
     }
 
     expect(client.queryCache.containsKey(cacheKey), isFalse);
+  });
+
+  testWidgets(
+      'gcTime 0 on useInfiniteQuery evicts cache immediately on unmount for fresh reload',
+      (WidgetTester tester) async {
+    final keyList = ['infinite', 'gc-zero-fresh'];
+    final cacheKey = queryKeyToCacheKey(keyList);
+    final holder = ValueNotifier<InfiniteQueryResult<int>?>(null);
+    var fetchCount = 0;
+
+    Widget buildWidget() => QueryClientProvider(
+          client: client,
+          child: MaterialApp(
+            home: HookBuilder(builder: (context) {
+              final result = useInfiniteQuery<int>(
+                queryKey: keyList,
+                queryFn: (page) async {
+                  fetchCount++;
+                  await Future.delayed(const Duration(milliseconds: 5));
+                  return page;
+                },
+                initialPageParam: 1,
+                getNextPageParam: (last) => last < 3 ? last + 1 : null,
+                gcTime: 0,
+              );
+              holder.value = result;
+              return Container();
+            }),
+          ),
+        );
+
+    // Load pages 1 and 2
+    await tester.pumpWidget(buildWidget());
+    await tester.pumpAndSettle();
+    expect(holder.value!.data, equals([1]));
+    holder.value!.fetchNextPage?.call();
+    await tester.pumpAndSettle();
+    expect(holder.value!.data, equals([1, 2]));
+    expect(client.queryCache.containsKey(cacheKey), isTrue);
+
+    // Unmount → gcTime=0 should evict immediately
+    await tester.pumpWidget(Container());
+    await tester
+        .pump(Duration.zero); // advance fake clock so zero-duration timer fires
+    expect(client.queryCache.containsKey(cacheKey), isFalse,
+        reason: 'gcTime=0 must evict immediately after unmount');
+
+    // Remount → fresh start (no cached pages)
+    final preFetch = fetchCount;
+    await tester.pumpWidget(buildWidget());
+    await tester.pump();
+    expect(holder.value!.status, equals(QueryStatus.pending),
+        reason: 'Cache cleared → second mount must start fresh');
+    expect(holder.value!.data, isEmpty);
+
+    await tester.pumpAndSettle();
+    expect(holder.value!.data, equals([1]),
+        reason: 'Fresh start: only page 1, not [1,2]');
+    expect(fetchCount, greaterThan(preFetch));
+
+    // Cleanup: unmount and consume the zero-duration GC timer to avoid
+    // 'pending timers' assertion at test end.
+    await tester.pumpWidget(Container());
+    await tester.pump(Duration.zero);
   });
 
   testWidgets(

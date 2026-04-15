@@ -12,8 +12,9 @@ void main() {
 
   setUp(() {
     queryClient = QueryClient(
-        defaultOptions:
-            const DefaultOptions(queries: QueryDefaultOptions(gcTime: 0)));
+        defaultOptions: const DefaultOptions(
+            queries: QueryDefaultOptions(gcTime: -1),
+            mutations: MutationDefaultOptions(gcTime: -1)));
     queryClient.queryCache.clear();
     focusManager.setFocused(false);
     onlineManager.setOnline(false);
