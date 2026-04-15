@@ -36,14 +36,13 @@ class InfiniteQueryObserver<T, TPageParam> extends QueryObserver<
     if (base is InfiniteQueryResult<T, TPageParam>) return base;
 
     final opts = options as InfiniteQueryOptions<T, TPageParam>;
-    var safeData =
-        base.data ?? InfiniteData<T, TPageParam>(pages: [], pageParams: []);
+    var safeData = base.data; // null when pending with no cache — mirrors React's data: undefined
     var status = base.status;
     var error = base.error;
     var isPlaceholder = base.isPlaceholderData;
 
     if (opts.placeholderData != null &&
-        safeData.pages.isEmpty &&
+        (safeData == null || safeData.pages.isEmpty) &&
         status == QueryStatus.pending) {
       InfiniteData<T, TPageParam>? placeholderData;
       if (isPlaceholder && opts.placeholderData == _lastPlaceholderDataOption) {
@@ -201,21 +200,27 @@ class InfiniteQueryObserver<T, TPageParam> extends QueryObserver<
     final opts = options as InfiniteQueryOptions<T, TPageParam>;
 
     // Extract the InfiniteData from the parent result; fall back to empty.
-    InfiniteData<T, TPageParam> safeData;
+    InfiniteData<T, TPageParam>? safeData;
     var status = parentResult.status;
     var error = parentResult.error;
     try {
-      safeData = parentResult.data as InfiniteData<T, TPageParam>? ??
-          InfiniteData<T, TPageParam>(pages: [], pageParams: []);
+      safeData = parentResult.data;
     } catch (_) {
-      safeData = InfiniteData<T, TPageParam>(pages: [], pageParams: []);
+      safeData = null;
       status = QueryStatus.pending;
       error = null;
     }
 
+    // React: data is undefined only for pending state (no cache yet).
+    // For error/success states, fall back to empty InfiniteData so existing
+    // error-state behaviour is preserved (data.pages == []).
+    if (safeData == null && status != QueryStatus.pending) {
+      safeData = InfiniteData<T, TPageParam>(pages: [], pageParams: []);
+    }
+
     var isPlaceholder = parentResult.isPlaceholderData;
     if (opts.placeholderData != null &&
-        safeData.pages.isEmpty &&
+        (safeData == null || safeData.pages.isEmpty) &&
         status == QueryStatus.pending) {
       InfiniteData<T, TPageParam>? placeholderData;
       if (isPlaceholder && opts.placeholderData == _lastPlaceholderDataOption) {

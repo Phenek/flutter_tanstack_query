@@ -747,7 +747,7 @@ void main() {
     await tester.pump();
     // React behavior: cached pages are shown immediately (not hidden behind pending).
     expect(holder.value!.status, equals(QueryStatus.success));
-    expect(holder.value!.data, equals(<int>[9]));
+    expect(holder.value!.data?.pages, equals(<int>[9]));
 
     await tester.pumpAndSettle();
 
@@ -982,10 +982,10 @@ void main() {
     // Load pages 1 and 2
     await tester.pumpWidget(buildWidget());
     await tester.pumpAndSettle();
-    expect(holder.value!.data, equals([1]));
+    expect(holder.value!.data?.pages, equals([1]));
     holder.value!.fetchNextPage?.call();
     await tester.pumpAndSettle();
-    expect(holder.value!.data, equals([1, 2]));
+    expect(holder.value!.data?.pages, equals([1, 2]));
     expect(client.queryCache.containsKey(cacheKey), isTrue);
 
     // Unmount → gcTime=0 should evict immediately
@@ -1001,10 +1001,10 @@ void main() {
     await tester.pump();
     expect(holder.value!.status, equals(QueryStatus.pending),
         reason: 'Cache cleared → second mount must start fresh');
-    expect(holder.value!.data, isEmpty);
+    expect(holder.value!.data, isNull);
 
     await tester.pumpAndSettle();
-    expect(holder.value!.data, equals([1]),
+    expect(holder.value!.data?.pages, equals([1]),
         reason: 'Fresh start: only page 1, not [1,2]');
     expect(fetchCount, greaterThan(preFetch));
 

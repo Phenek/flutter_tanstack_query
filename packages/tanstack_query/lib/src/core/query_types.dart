@@ -408,7 +408,7 @@ class InfiniteQueryResult<T, TPageParam>
   InfiniteQueryResult({
     required String key,
     required QueryStatus status,
-    required InfiniteData<T, TPageParam> data,
+    InfiniteData<T, TPageParam>? data,
     required bool isFetching,
     required Object? error,
     required this.isFetchingNextPage,
@@ -468,7 +468,7 @@ class InfiniteQueryResult<T, TPageParam>
   }) {
     return InfiniteQueryResult<T, TPageParam>(
       key: key ?? this.key,
-      data: data ?? this.data!,
+      data: data ?? this.data,
       status: status ?? this.status,
       isFetching: isFetching ?? this.isFetching,
       error: error ?? this.error,
