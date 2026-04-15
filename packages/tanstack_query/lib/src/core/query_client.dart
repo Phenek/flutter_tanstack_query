@@ -144,23 +144,24 @@ class QueryClient {
   }
 
   /// Synchronously updates cached infinite query data for [keys] using
-  /// [updateFn]. The function receives the previous list of pages and must
-  /// return the updated list to store in cache.
-  void setQueryInfiniteData<T>(
-      List<Object> keys, List<T> Function(List<T>? oldDatas) updateFn) {
+  /// [updateFn]. The function receives the previous [InfiniteData] and must
+  /// return the updated [InfiniteData] to store in cache.
+  void setQueryInfiniteData<T, TPageParam>(List<Object> keys,
+      InfiniteData<T, TPageParam> Function(InfiniteData<T, TPageParam>? oldData)
+          updateFn) {
     final cacheKey = queryKeyToCacheKey(keys);
     final oldEntry = queryCache[cacheKey];
-    final oldDatas = oldEntry?.result.data as List<T>? ?? <T>[];
-    final newDatas = updateFn(oldDatas);
+    final oldData = oldEntry?.result.data as InfiniteData<T, TPageParam>?;
+    final newData = updateFn(oldData);
 
-    final queryResult = InfiniteQueryResult<T>(
+    final queryResult = InfiniteQueryResult<T, TPageParam>(
       key: cacheKey,
       status: QueryStatus.success,
-      data: newDatas,
+      data: newData,
       isFetching: false,
       error: null,
       isFetchingNextPage: false,
-      fetchNextPage: () async {},
+      fetchNextPage: null,
     );
 
     // annotate dataUpdatedAt on the stored result

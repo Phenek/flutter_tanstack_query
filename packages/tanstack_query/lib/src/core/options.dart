@@ -1,3 +1,12 @@
+import 'dart:math';
+
+/// Default exponential-backoff retry delay — mirrors React's `defaultRetryDelay`:
+/// `min(1000 * 2^attempt, 30_000)` ms.
+///
+/// failureCount=0 → 1 s, 1 → 2 s, 2 → 4 s, 3 → 8 s … capped at 30 s.
+int defaultRetryDelay(int attempt, dynamic _error) =>
+    min(1000 * pow(2, attempt).toInt(), 30000);
+
 /// Default options applied to queries (enabled, staleTime, refetch policy).
 class QueryDefaultOptions {
   final bool enabled;
@@ -14,7 +23,7 @@ class QueryDefaultOptions {
       {this.enabled = true,
       this.staleTime = 0,
       this.retry = 3,
-      this.retryDelay = 1000,
+      this.retryDelay = defaultRetryDelay,
       this.retryOnMount = true,
       this.refetchOnMount = true,
       this.gcTime = 5 * 60 * 1000,

@@ -5,52 +5,49 @@ import '../core/infinite_query_observer.dart';
 
 /// Hook for paginated/infinite queries.
 ///
-/// [queryFn] receives the page index and should return the page data. The
-/// returned [InfiniteQueryResult] exposes `fetchNextPage`, `isFetchingNextPage`,
-/// and accumulated `data` pages.
+/// Mirrors React's `useInfiniteQuery` — the returned [InfiniteQueryResult]
+/// exposes `fetchNextPage`, `fetchPreviousPage`, `isFetchingNextPage`,
+/// `hasNextPage`, and `data` (an [InfiniteData] struct with parallel
+/// `pages` and `pageParams` arrays).
 ///
 /// Parameters:
-/// - [queryKey]: Unique key for the list of pages.
-/// - [queryFn]: Function that receives a page index and returns the page data.
-/// - [initialPageParam]: The initial page index to start fetching from.
-/// - [getNextPageParam]: Optional function to compute the next page index
-///   given the last page's result.
-/// - [getPreviousPageParam]: Optional function to compute the previous page
-///   index given the first page's result.
-/// - [gcTime]: Garbage-collection time in milliseconds for this query's cache entry.
+/// - [queryKey]: Unique key for this infinite query.
+/// - [queryFn]: Receives a [TPageParam] and returns the page data.
+/// - [initialPageParam]: The first param passed to [queryFn] on mount.
+/// - [getNextPageParam]: 4-arg function — `(lastPage, allPages, lastPageParam,
+///   allPageParams) => TPageParam?`. Return `null` to signal no next page.
+/// - [getPreviousPageParam]: 4-arg function for backward pagination. Optional.
+/// - [maxPages]: Maximum number of pages to keep. Oldest page is dropped when
+///   exceeded (mirrors React's `maxPages` option).
+/// - [gcTime]: GC time in milliseconds for this query's cache entry.
 /// - [enabled]: Whether the query is enabled.
-/// - [initialData]: T | () => T — initial value that is persisted to cache if
-///   provided and the cache is empty. It is considered stale by default
-///   unless `initialDataUpdatedAt` is set.
-/// - [initialDataUpdatedAt]: int (ms) | () => int | null — timestamp for when
-///   the initialData was last updated; used together with staleTime to
-///   determine if a refetch is required on mount.
-/// - [placeholderData]: T | (previousValue, previousQuery) => T — observer-only
-///   placeholder shown while the query is pending; not persisted to cache.
-/// - [refetchOnMount]: When `true`, refetch when the observer mounts/subscribes.
-/// - [refetchOnReconnect]: When `true`, refetch query on reconnect.
-/// - [refetchOnWindowFocus]: When `true`, refetch query on window/app focus.
-/// - [retry]: Controls retry behavior;
-///   `false`, `true`, an `int`, or a function `(failureCount, error) => bool`.
-/// - [retryOnMount]: If `false`, a query that currently has an error will not
-///   attempt to retry when mounted.
-/// - [retryDelay]: Milliseconds between retries, or a function
-///   `(attempt, error) => int` returning the delay in ms.
+/// - [initialData]: Value or `() => InfiniteData<T, TPageParam>` persisted to
+///   cache on first access.
+/// - [initialDataUpdatedAt]: Timestamp for [initialData] freshness.
+/// - [placeholderData]: Observer-only placeholder shown while pending; not
+///   persisted to cache.
+/// - [refetchOnMount], [refetchOnReconnect], [refetchOnWindowFocus]: same
+///   semantics as [useQuery].
+/// - [retry], [retryOnMount], [retryDelay]: same semantics as [useQuery].
 /// - [staleTime]: Staleness duration (milliseconds) for cached pages.
-/// - [enabled], [refetchOnWindowFocus], [refetchOnReconnect], [refetchOnMount]: same semantics as
-///   [useQuery].
-
-/// Hook for paginated/infinite queries.
-///
-/// This implementation now delegates the core behavior to
-/// `InfiniteQueryObserver` (mirroring the TS architecture) and simply
-/// subscribes to the observer for state updates.
-InfiniteQueryResult<T> useInfiniteQuery<T>({
+InfiniteQueryResult<T, TPageParam> useInfiniteQuery<T, TPageParam>({
   required List<Object> queryKey,
-  required Future<T?> Function(int pageParam) queryFn,
+  required Future<T?> Function(TPageParam pageParam) queryFn,
   bool? enabled,
-  required int initialPageParam,
-  int? Function(T lastResult)? getNextPageParam,
+  required TPageParam initialPageParam,
+  TPageParam? Function(
+    T lastPage,
+    List<T> allPages,
+    TPageParam lastPageParam,
+    List<TPageParam> allPageParams,
+  )? getNextPageParam,
+  TPageParam? Function(
+    T firstPage,
+    List<T> allPages,
+    TPageParam firstPageParam,
+    List<TPageParam> allPageParams,
+  )? getPreviousPageParam,
+  int? maxPages,
   double? staleTime,
   bool? refetchOnWindowFocus,
   bool? refetchOnReconnect,
@@ -62,18 +59,18 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
   Object? initialData,
   Object? initialDataUpdatedAt,
   Object? placeholderData,
-  int? Function(T firstResult)? getPreviousPageParam,
 }) {
   final queryClient = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
 
   final options = useMemoized(
-      () => InfiniteQueryOptions<T>(
+      () => InfiniteQueryOptions<T, TPageParam>(
             queryKey: queryKey,
             queryFn: queryFn,
             initialPageParam: initialPageParam,
             getNextPageParam: getNextPageParam,
             getPreviousPageParam: getPreviousPageParam,
+            maxPages: maxPages,
             staleTime: staleTime,
             enabled: enabled,
             refetchOnWindowFocus: refetchOnWindowFocus,
@@ -93,6 +90,7 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
         initialPageParam,
         getNextPageParam,
         getPreviousPageParam,
+        maxPages,
         staleTime,
         enabled,
         refetchOnWindowFocus,
@@ -107,22 +105,22 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
         placeholderData,
         cacheKey
       ]);
-  // Create the observer once for this cache key and keep it in sync via setOptions
-  final observer = useMemoized<InfiniteQueryObserver<T>>(
-      () => InfiniteQueryObserver<T>(queryClient, options),
+
+  final observer = useMemoized<InfiniteQueryObserver<T, TPageParam>>(
+      () => InfiniteQueryObserver<T, TPageParam>(queryClient, options),
       [queryClient, cacheKey]);
 
   useEffect(() {
-    // Keep observer options in sync
     observer.setOptions(options);
-
     return null;
   }, [observer, options]);
 
-  final state = useState<InfiniteQueryResult<T>>(observer.getCurrentResult());
+  final state = useState<InfiniteQueryResult<T, TPageParam>>(
+      observer.getCurrentResult());
 
   useEffect(() {
-    final unsubscribe = observer.subscribe((InfiniteQueryResult<T> res) {
+    final unsubscribe =
+        observer.subscribe((InfiniteQueryResult<T, TPageParam> res) {
       Future.microtask(() {
         try {
           state.value = res;
@@ -139,22 +137,18 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
 }
 
 /// Resets the pagination and result state for an infinite query.
-/// Parameters:
-/// - [currentPage]: Mutable reference to the current page index.
-/// - [initialPageParam]: The page index to reset to.
-/// - [result]: The [ValueNotifier] wrapping the current [InfiniteQueryResult<T>]
-///   that will be modified.
-/// - [isLoading]: Optional flag (currently unused) reserved for future control
-///   of loading state.
 ///
-/// Note: This operation clears existing data and places the query into a
-/// pending state.
-void resetValues<T>(ObjectRef<int> currentPage, int initialPageParam,
-    ValueNotifier<InfiniteQueryResult<T>> result,
+/// Clears existing pages and places the query into a pending state.
+void resetValues<T, TPageParam>(
+    ObjectRef<TPageParam> currentPage,
+    TPageParam initialPageParam,
+    ValueNotifier<InfiniteQueryResult<T, TPageParam>> result,
     {bool isLoading = false}) {
   currentPage.value = initialPageParam;
-  // Use copyWith to create a fresh immutable-like result with cleared data
-  // and pending status rather than mutating fields directly.
-  result.value =
-      result.value.copyWith(status: QueryStatus.pending, data: <T>[]);
+  result.value = result.value.copyWith(
+    status: QueryStatus.pending,
+    data: InfiniteData<T, TPageParam>(pages: [], pageParams: []),
+  );
 }
+
+/// Hook for paginated/infinite queries.

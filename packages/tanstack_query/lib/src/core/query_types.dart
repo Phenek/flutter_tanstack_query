@@ -181,26 +181,93 @@ class QueryOptions<T> {
   }
 }
 
+/// Holds the pages and page params returned by an infinite query.
+///
+/// Mirrors React's `InfiniteData<TData, TPageParam>`:
+/// ```ts
+/// interface InfiniteData<TData, TPageParam = unknown> {
+///   pages: Array<TData>
+///   pageParams: Array<TPageParam>
+/// }
+/// ```
+class InfiniteData<TData, TPageParam> {
+  /// The list of page data fetched so far.
+  final List<TData> pages;
+
+  /// The page param used to fetch each entry in [pages] (1:1 parallel array).
+  final List<TPageParam> pageParams;
+
+  const InfiniteData({required this.pages, required this.pageParams});
+
+  InfiniteData<TData, TPageParam> copyWith({
+    List<TData>? pages,
+    List<TPageParam>? pageParams,
+  }) {
+    return InfiniteData(
+      pages: pages ?? this.pages,
+      pageParams: pageParams ?? this.pageParams,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is InfiniteData<TData, TPageParam> &&
+          pages == other.pages &&
+          pageParams == other.pageParams;
+
+  @override
+  int get hashCode => Object.hash(pages, pageParams);
+}
+
 /// Options specific to infinite queries.
 ///
-/// Note: This extends the general `QueryOptions` so shared options such as
-/// `retry`, `retryDelay` and `retryOnMount` are available for infinite
-/// queries as well. The `queryFn` for infinite queries receives a `pageParam`.
-class InfiniteQueryOptions<T> extends QueryOptions<List<T>> {
-  /// The page-aware query function. Receives the page parameter and returns
-  /// the page data or `null`.
-  final Future<T?> Function(int pageParam) pageQueryFn;
+/// [TPageParam] is the type of the page parameter — `int` for page-index
+/// pagination, `String` for cursor-based APIs, any object for complex params.
+///
+/// Mirrors React's `InfiniteQueryObserverOptions<TQueryFnData, TError, TData, TPageParam>`.
+class InfiniteQueryOptions<T, TPageParam>
+    extends QueryOptions<InfiniteData<T, TPageParam>> {
+  /// The page-aware query function. Receives the current [TPageParam] and
+  /// returns the page data or `null`.
+  final Future<T?> Function(TPageParam pageParam) pageQueryFn;
 
-  final int initialPageParam;
-  final int? Function(T lastResult)? getNextPageParam;
-  final int? Function(T firstResult)? getPreviousPageParam;
+  /// The initial page parameter passed to [pageQueryFn] on the first fetch.
+  final TPageParam initialPageParam;
+
+  /// Computes the next page param from the last page's result and accumulated
+  /// state — mirrors React's 4-arg signature:
+  /// `(lastPage, allPages, lastPageParam, allPageParams) => TPageParam | null`.
+  ///
+  /// Return `null` to signal that there is no next page ([hasNextPage] = false).
+  final TPageParam? Function(
+    T lastPage,
+    List<T> allPages,
+    TPageParam lastPageParam,
+    List<TPageParam> allPageParams,
+  )? getNextPageParam;
+
+  /// Computes the previous page param. Optional; enables backward pagination.
+  final TPageParam? Function(
+    T firstPage,
+    List<T> allPages,
+    TPageParam firstPageParam,
+    List<TPageParam> allPageParams,
+  )? getPreviousPageParam;
+
+  /// Maximum number of pages to keep in [InfiniteData.pages].
+  ///
+  /// When the list exceeds this limit the oldest page (and its param) is
+  /// removed, mirroring React's `maxPages` option.
+  final int? maxPages;
 
   InfiniteQueryOptions({
     required super.queryKey,
-    required Future<T?> Function(int pageParam) queryFn,
+    required Future<T?> Function(TPageParam pageParam) queryFn,
     required this.initialPageParam,
     this.getNextPageParam,
     this.getPreviousPageParam,
+    this.maxPages,
     super.staleTime,
     super.enabled,
     super.refetchOnWindowFocus,
@@ -217,32 +284,39 @@ class InfiniteQueryOptions<T> extends QueryOptions<List<T>> {
         super(
           queryFn: () async {
             final value = await queryFn(initialPageParam);
-            if (value == null) return <T>[];
-            return <T>[value as T];
+            if (value == null) {
+              return InfiniteData<T, TPageParam>(pages: [], pageParams: []);
+            }
+            return InfiniteData<T, TPageParam>(
+              pages: [value as T],
+              pageParams: [initialPageParam],
+            );
           },
         );
 
-  /// Evaluate initial data for infinite queries as a list of pages.
-  List<T>? resolveInitialPages() {
+  /// Resolve initial data for infinite queries as [InfiniteData].
+  InfiniteData<T, TPageParam>? resolveInitialData() {
     try {
-      if (initialData is InitialDataFn<List<T>>) {
-        return (initialData as InitialDataFn<List<T>>)();
+      if (initialData is InitialDataFn<InfiniteData<T, TPageParam>>) {
+        return (initialData as InitialDataFn<InfiniteData<T, TPageParam>>)();
       }
-      return initialData as List<T>?;
+      return initialData as InfiniteData<T, TPageParam>?;
     } catch (_) {
       return null;
     }
   }
 
-  /// Evaluate placeholder data for infinite queries as a list of pages.
-  List<T>? resolvePlaceholderPages(
-      List<T>? previousValue, dynamic previousQuery) {
+  /// Resolve placeholder data for infinite queries as [InfiniteData].
+  InfiniteData<T, TPageParam>? resolvePlaceholderData(
+      InfiniteData<T, TPageParam>? previousValue, dynamic previousQuery) {
     try {
-      if (placeholderData is PlaceholderDataFn<List<T>>) {
-        return (placeholderData as PlaceholderDataFn<List<T>>)(
+      if (placeholderData
+          is PlaceholderDataFn<InfiniteData<T, TPageParam>>) {
+        return (placeholderData
+                as PlaceholderDataFn<InfiniteData<T, TPageParam>>)(
             previousValue, previousQuery);
       }
-      return placeholderData as List<T>?;
+      return placeholderData as InfiniteData<T, TPageParam>?;
     } catch (_) {
       return null;
     }
@@ -313,9 +387,13 @@ class QueryResult<T> {
   });
 }
 
-/// Result type returned by [useInfiniteQuery], with helper `fetchNextPage` and
-/// `isFetchingNextPage` flag.
-class InfiniteQueryResult<T> extends QueryResult<List<T>> {
+/// Result type returned by [useInfiniteQuery].
+///
+/// [data] is an [InfiniteData] value whose [InfiniteData.pages] holds the
+/// accumulated page results and [InfiniteData.pageParams] holds the param
+/// used to fetch each page (1:1 parallel array — same shape as React).
+class InfiniteQueryResult<T, TPageParam>
+    extends QueryResult<InfiniteData<T, TPageParam>> {
   bool isFetchingNextPage;
   bool isFetchingPreviousPage;
   bool isFetchNextPageError;
@@ -324,13 +402,13 @@ class InfiniteQueryResult<T> extends QueryResult<List<T>> {
   bool isRefetchError;
   bool hasNextPage;
   bool hasPreviousPage;
-  Function? fetchNextPage;
-  Function? fetchPreviousPage;
+  Future<InfiniteQueryResult<T, TPageParam>> Function()? fetchNextPage;
+  Future<InfiniteQueryResult<T, TPageParam>> Function()? fetchPreviousPage;
 
   InfiniteQueryResult({
     required String key,
     required QueryStatus status,
-    required List<T> data,
+    required InfiniteData<T, TPageParam> data,
     required bool isFetching,
     required Object? error,
     required this.isFetchingNextPage,
@@ -348,7 +426,9 @@ class InfiniteQueryResult<T> extends QueryResult<List<T>> {
     bool isPlaceholderData = false,
     int failureCount = 0,
     Object? failureReason,
-    Future<QueryResult<List<T>>> Function({bool? throwOnError})? refetch,
+    Future<QueryResult<InfiniteData<T, TPageParam>>> Function(
+            {bool? throwOnError})?
+        refetch,
     FetchMeta? fetchMeta,
   }) : super(key, status, data, error,
             isFetching: isFetching,
@@ -360,14 +440,14 @@ class InfiniteQueryResult<T> extends QueryResult<List<T>> {
             refetch: refetch,
             fetchMeta: fetchMeta);
 
-  InfiniteQueryResult<T> copyWith({
+  InfiniteQueryResult<T, TPageParam> copyWith({
     String? key,
-    List<T>? data,
+    InfiniteData<T, TPageParam>? data,
     QueryStatus? status,
     bool? isFetching,
     Object? error,
     bool? isFetchingNextPage,
-    Function? fetchNextPage,
+    Future<InfiniteQueryResult<T, TPageParam>> Function()? fetchNextPage,
     bool? isFetchingPreviousPage,
     bool? isFetchNextPageError,
     bool? isFetchPreviousPageError,
@@ -375,16 +455,18 @@ class InfiniteQueryResult<T> extends QueryResult<List<T>> {
     bool? isRefetchError,
     bool? hasNextPage,
     bool? hasPreviousPage,
-    Function? fetchPreviousPage,
+    Future<InfiniteQueryResult<T, TPageParam>> Function()? fetchPreviousPage,
     bool? isStale,
     int? dataUpdatedAt,
     bool? isPlaceholderData,
     int? failureCount,
     Object? failureReason,
-    Future<QueryResult<List<T>>> Function({bool? throwOnError})? refetch,
+    Future<QueryResult<InfiniteData<T, TPageParam>>> Function(
+            {bool? throwOnError})?
+        refetch,
     FetchMeta? fetchMeta,
   }) {
-    return InfiniteQueryResult<T>(
+    return InfiniteQueryResult<T, TPageParam>(
       key: key ?? this.key,
       data: data ?? this.data!,
       status: status ?? this.status,
@@ -413,20 +495,37 @@ class InfiniteQueryResult<T> extends QueryResult<List<T>> {
   }
 }
 
-bool hasNextPage<T>(
-  InfiniteQueryOptions<T> options,
-  List<T>? data,
+/// Returns `true` when [getNextPageParam] produces a non-null value for the
+/// current [data], mirroring React's `hasNextPage` helper.
+bool hasNextPage<T, TPageParam>(
+  InfiniteQueryOptions<T, TPageParam> options,
+  InfiniteData<T, TPageParam>? data,
 ) {
   if (options.getNextPageParam == null) return false;
-  if (data == null || data.isEmpty) return false;
-  return options.getNextPageParam!(data.last) != null;
+  if (data == null || data.pages.isEmpty) return false;
+  final lastIndex = data.pages.length - 1;
+  return options.getNextPageParam!(
+        data.pages[lastIndex],
+        data.pages,
+        data.pageParams[lastIndex],
+        data.pageParams,
+      ) !=
+      null;
 }
 
-bool hasPreviousPage<T>(
-  InfiniteQueryOptions<T> options,
-  List<T>? data,
+/// Returns `true` when [getPreviousPageParam] produces a non-null value for
+/// the current [data], mirroring React's `hasPreviousPage` helper.
+bool hasPreviousPage<T, TPageParam>(
+  InfiniteQueryOptions<T, TPageParam> options,
+  InfiniteData<T, TPageParam>? data,
 ) {
   if (options.getPreviousPageParam == null) return false;
-  if (data == null || data.isEmpty) return false;
-  return options.getPreviousPageParam!(data.first) != null;
+  if (data == null || data.pages.isEmpty) return false;
+  return options.getPreviousPageParam!(
+        data.pages[0],
+        data.pages,
+        data.pageParams[0],
+        data.pageParams,
+      ) !=
+      null;
 }

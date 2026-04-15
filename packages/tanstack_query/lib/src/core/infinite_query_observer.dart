@@ -10,8 +10,12 @@ import 'package:tanstack_query/tanstack_query.dart';
 /// - `createResult()` reads `currentQuery?.fetchMeta` — the authoritative
 ///   in-flight direction set synchronously by [Query.fetch()] — so that
 ///   `isFetchingNextPage` is never derived from the stale cached result.
-class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
-  List<T>? _lastPlaceholderData;
+///
+/// [T] is the type of a single page result.
+/// [TPageParam] is the type of the page parameter.
+class InfiniteQueryObserver<T, TPageParam> extends QueryObserver<
+    InfiniteData<T, TPageParam>, Object, InfiniteData<T, TPageParam>> {
+  InfiniteData<T, TPageParam>? _lastPlaceholderData;
   dynamic _lastPlaceholderDataOption;
 
   InfiniteQueryObserver(super._client, super.options);
@@ -24,38 +28,30 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
   bool shouldClearStaleDataOnMount() => false;
 
   @override
-  InfiniteQueryResult<T> getCurrentResult() =>
+  InfiniteQueryResult<T, TPageParam> getCurrentResult() =>
       _coerceResult(super.getCurrentResult());
 
-  InfiniteQueryResult<T> _coerceResult(QueryResult<List<T>> base) {
-    if (base is InfiniteQueryResult<T>) return base;
+  InfiniteQueryResult<T, TPageParam> _coerceResult(
+      QueryResult<InfiniteData<T, TPageParam>> base) {
+    if (base is InfiniteQueryResult<T, TPageParam>) return base;
 
-    final opts = options as InfiniteQueryOptions<T>;
-    List<T> safeData = <T>[];
+    final opts = options as InfiniteQueryOptions<T, TPageParam>;
+    var safeData =
+        base.data ?? InfiniteData<T, TPageParam>(pages: [], pageParams: []);
     var status = base.status;
     var error = base.error;
     var isPlaceholder = base.isPlaceholderData;
-    try {
-      if (base.data != null) {
-        safeData = (base.data as List).cast<T>();
-      }
-    } catch (_) {
-      safeData = <T>[];
-      status = QueryStatus.pending;
-      error = null;
-    }
 
     if (opts.placeholderData != null &&
-        safeData.isEmpty &&
+        safeData.pages.isEmpty &&
         status == QueryStatus.pending) {
-      dynamic placeholderData;
+      InfiniteData<T, TPageParam>? placeholderData;
       if (isPlaceholder && opts.placeholderData == _lastPlaceholderDataOption) {
         placeholderData = _lastPlaceholderData;
       } else {
-        placeholderData = opts.resolvePlaceholderPages(null, null);
+        placeholderData = opts.resolvePlaceholderData(null, null);
       }
-
-      if (placeholderData is List<T>) {
+      if (placeholderData != null) {
         safeData = placeholderData;
         status = QueryStatus.success;
         error = null;
@@ -65,7 +61,7 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
       }
     }
 
-    return InfiniteQueryResult<T>(
+    return InfiniteQueryResult<T, TPageParam>(
       key: base.key,
       status: status,
       data: safeData,
@@ -95,107 +91,82 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
   bool shouldFetchOnMount() {
     final cacheKey = queryKeyToCacheKey(options.queryKey);
     final entry = QueryClient.instance.queryCache[cacheKey];
-
-    // Accept both InfiniteQueryResult (legacy) and plain QueryResult<List<T>>
-    // (written by the new Query.fetch() + InfiniteQueryBehavior path).
-    if (entry?.result is InfiniteQueryResult ||
-        entry?.result is QueryResult<List<T>>) {
-      try {
-        final raw = entry!.result;
-        if (raw.data != null) {
-          // Force eager evaluation to catch type mismatches (List.cast is lazy).
-          List<T>.from(raw.data as List);
-        }
-      } catch (_) {
-        return true;
-      }
+    if (entry?.result is QueryResult<InfiniteData<T, TPageParam>>) {
+      return super.shouldFetchOnMount();
     }
-
     return super.shouldFetchOnMount();
   }
 
   @override
-  Future<QueryResult<List<T>>> fetch(
+  Future<QueryResult<InfiniteData<T, TPageParam>>> fetch(
       {FetchMeta? meta, bool? throwOnError}) async {
-    // Mirror React: rebuild _query so it is live after a clear().
     updateQuery();
 
-    // Inject the behavior so Query.fetch() uses InfiniteQueryBehavior as the
-    // fetchFn provider, giving us a single Retryer as the dedup gate.
-    final opts = options as InfiniteQueryOptions<T>;
-
+    final opts = options as InfiniteQueryOptions<T, TPageParam>;
     final q = currentQuery;
     if (q == null) return getCurrentResult();
 
     try {
-      // Pass the behavior directly to Query.fetch() so that options
-      // (InfiniteQueryOptions) are preserved intact for the behavior cast.
-      await q.fetch(meta: meta, behavior: InfiniteQueryBehavior<T>());
+      await q.fetch(
+          meta: meta, behavior: InfiniteQueryBehavior<T, TPageParam>());
     } catch (e) {
       if (throwOnError == true) rethrow;
     }
 
-    // After the query settles, read the raw result and wrap it as
-    // InfiniteQueryResult — preserving backward-compat for tests that cast
-    // client.queryCache[key]!.result as InfiniteQueryResult.
+    // The cache now holds QueryResult<InfiniteData<T, TPageParam>> directly
+    // from the behavior. Wrap into InfiniteQueryResult for type safety and
+    // to ensure isFetchingNextPage / isFetchingPreviousPage flags are set.
     final cacheKey = queryKeyToCacheKey(opts.queryKey);
     final settled = QueryClient.instance.queryCache[cacheKey]?.result;
 
-    if (settled is InfiniteQueryResult<T>) return settled;
+    if (settled is InfiniteQueryResult<T, TPageParam>) return settled;
 
-    if (settled is QueryResult<List<T>>) {
-      final wrapped = _buildInfiniteResult(opts, settled, meta);
+    if (settled is QueryResult<InfiniteData<T, TPageParam>>) {
+      final wrapped = _toInfiniteResult(opts, settled, meta);
       QueryClient.instance.queryCache[cacheKey] =
           QueryCacheEntry(wrapped, DateTime.now());
-      // Fan-out to all observers on this Query (mirrors React's #dispatch fan-out).
       q.notifyObservers();
       return wrapped;
     }
 
-    // Fallback: read via normal observer path.
     q.notifyObservers();
     return getCurrentResult();
   }
 
-  /// Build an [InfiniteQueryResult] from a plain [QueryResult<List<T>>] that
-  /// came out of [Query.fetch()] via [InfiniteQueryBehavior].
-  InfiniteQueryResult<T> _buildInfiniteResult(
-    InfiniteQueryOptions<T> opts,
-    QueryResult<List<T>> res,
+  /// Wraps a settled [QueryResult<InfiniteData<T, TPageParam>>] into a typed
+  /// [InfiniteQueryResult] and computes the directional flags from [fetchMeta].
+  InfiniteQueryResult<T, TPageParam> _toInfiniteResult(
+    InfiniteQueryOptions<T, TPageParam> opts,
+    QueryResult<InfiniteData<T, TPageParam>> res,
     FetchMeta? fetchMeta,
   ) {
-    List<T> safeData = <T>[];
-    try {
-      if (res.data != null) safeData = (res.data as List).cast<T>();
-    } catch (_) {}
-
+    final data =
+        res.data ?? InfiniteData<T, TPageParam>(pages: [], pageParams: []);
     final direction = fetchMeta?.fetchMore?.direction;
     final isFetchingNextPage =
         res.isFetching && direction == FetchDirection.forward;
-    final isFetchingPreviousPage =
+    final isFetchingPrevPage =
         res.isFetching && direction == FetchDirection.backward;
-    final isFetchNextPageError =
+    final isFetchNextError =
         res.isError && direction == FetchDirection.forward;
-    final isFetchPreviousPageError =
+    final isFetchPrevError =
         res.isError && direction == FetchDirection.backward;
 
-    return InfiniteQueryResult<T>(
+    return InfiniteQueryResult<T, TPageParam>(
       key: res.key,
       status: res.status,
-      data: safeData,
+      data: data,
       isFetching: res.isFetching,
       error: res.error,
       isFetchingNextPage: isFetchingNextPage,
-      isFetchingPreviousPage: isFetchingPreviousPage,
-      isFetchNextPageError: isFetchNextPageError,
-      isFetchPreviousPageError: isFetchPreviousPageError,
-      isRefetchError:
-          res.isError && !isFetchNextPageError && !isFetchPreviousPageError,
-      isRefetching:
-          res.isFetching && !isFetchingNextPage && !isFetchingPreviousPage,
-      hasNextPage: hasNextPage(opts, safeData),
-      hasPreviousPage: hasPreviousPage(opts, safeData),
-      fetchNextPage: hasNextPage(opts, safeData) ? fetchNextPage : null,
+      isFetchingPreviousPage: isFetchingPrevPage,
+      isFetchNextPageError: isFetchNextError,
+      isFetchPreviousPageError: isFetchPrevError,
+      isRefetchError: res.isError && !isFetchNextError && !isFetchPrevError,
+      isRefetching: res.isFetching && !isFetchingNextPage && !isFetchingPrevPage,
+      hasNextPage: hasNextPage(opts, data),
+      hasPreviousPage: hasPreviousPage(opts, data),
+      fetchNextPage: hasNextPage(opts, data) ? fetchNextPage : null,
       fetchPreviousPage: fetchPreviousPage,
       isStale: res.isStale,
       dataUpdatedAt: res.dataUpdatedAt,
@@ -207,54 +178,52 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
     );
   }
 
-  /// Returns a copy of [opts] with [InfiniteQueryBehavior] injected as the
-  Future<InfiniteQueryResult<T>> fetchNextPage() async {
+  Future<InfiniteQueryResult<T, TPageParam>> fetchNextPage() async {
     final result = await fetch(
       meta: const FetchMeta(
           fetchMore: FetchMore(direction: FetchDirection.forward)),
     );
-    return result as InfiniteQueryResult<T>;
+    return result as InfiniteQueryResult<T, TPageParam>;
   }
 
-  Future<InfiniteQueryResult<T>> fetchPreviousPage() async {
+  Future<InfiniteQueryResult<T, TPageParam>> fetchPreviousPage() async {
     final result = await fetch(
       meta: const FetchMeta(
           fetchMore: FetchMore(direction: FetchDirection.backward)),
     );
-    return result as InfiniteQueryResult<T>;
+    return result as InfiniteQueryResult<T, TPageParam>;
   }
 
   @override
-  QueryResult<List<T>> createResult(
+  QueryResult<InfiniteData<T, TPageParam>> createResult(
       QueryResult<dynamic> res, QueryCacheEntry? entry) {
     final parentResult = super.createResult(res, entry);
-    final opts = options as InfiniteQueryOptions<T>;
+    final opts = options as InfiniteQueryOptions<T, TPageParam>;
 
-    List<T> safeData = <T>[];
+    // Extract the InfiniteData from the parent result; fall back to empty.
+    InfiniteData<T, TPageParam> safeData;
     var status = parentResult.status;
     var error = parentResult.error;
     try {
-      if (parentResult.data != null) {
-        safeData = (parentResult.data as List).cast<T>();
-      }
+      safeData = parentResult.data as InfiniteData<T, TPageParam>? ??
+          InfiniteData<T, TPageParam>(pages: [], pageParams: []);
     } catch (_) {
-      safeData = <T>[];
+      safeData = InfiniteData<T, TPageParam>(pages: [], pageParams: []);
       status = QueryStatus.pending;
       error = null;
     }
 
     var isPlaceholder = parentResult.isPlaceholderData;
     if (opts.placeholderData != null &&
-        safeData.isEmpty &&
+        safeData.pages.isEmpty &&
         status == QueryStatus.pending) {
-      dynamic placeholderData;
+      InfiniteData<T, TPageParam>? placeholderData;
       if (isPlaceholder && opts.placeholderData == _lastPlaceholderDataOption) {
         placeholderData = _lastPlaceholderData;
       } else {
-        placeholderData = opts.resolvePlaceholderPages(null, null);
+        placeholderData = opts.resolvePlaceholderData(null, null);
       }
-
-      if (placeholderData is List<T>) {
+      if (placeholderData != null) {
         safeData = placeholderData;
         status = QueryStatus.success;
         error = null;
@@ -266,10 +235,6 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
 
     // ── React parity: read direction from Query.fetchMeta (canonical in-flight
     // state) rather than from the cached result's fetchMeta.
-    //
-    // When a plain refetch fires (e.g. stale-on-mount), Query._fetchMeta is
-    // null/idle, so isFetchingNextPage is correctly false — even if the last
-    // cached result carried direction=forward from a prior fetchNextPage().
     final fetchDirection = currentQuery?.fetchMeta?.fetchMore?.direction;
 
     final isFetchNextPageError =
@@ -281,7 +246,7 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
     final isFetchingPreviousPage =
         parentResult.isFetching && fetchDirection == FetchDirection.backward;
 
-    final result = InfiniteQueryResult<T>(
+    return InfiniteQueryResult<T, TPageParam>(
       key: parentResult.key,
       status: status,
       data: safeData,
@@ -297,10 +262,9 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
       isRefetching: parentResult.isFetching &&
           !isFetchingNextPage &&
           !isFetchingPreviousPage,
-      hasNextPage: hasNextPage(opts, parentResult.data),
-      hasPreviousPage: hasPreviousPage(opts, parentResult.data),
-      fetchNextPage:
-          hasNextPage(opts, parentResult.data) ? fetchNextPage : null,
+      hasNextPage: hasNextPage(opts, safeData),
+      hasPreviousPage: hasPreviousPage(opts, safeData),
+      fetchNextPage: hasNextPage(opts, safeData) ? fetchNextPage : null,
       fetchPreviousPage: fetchPreviousPage,
       isStale: parentResult.isStale,
       dataUpdatedAt: parentResult.dataUpdatedAt,
@@ -310,7 +274,5 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
       refetch: parentResult.refetch,
       fetchMeta: parentResult.fetchMeta,
     );
-
-    return result;
   }
 }

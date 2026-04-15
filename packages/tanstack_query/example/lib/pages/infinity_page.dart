@@ -15,13 +15,13 @@ class InfinityPage extends HookWidget {
     final page = useState<Pagination>(Pagination(number: 1, size: 5));
     final scrollController = useScrollController();
 
-    final infiniteTodos = useInfiniteQuery<PaginatedTodos>(
+    final infiniteTodos = useInfiniteQuery<PaginatedTodos, int>(
       queryKey: ["Infinite", GetAllTodosApi.name, page.value.size],
       queryFn: (int pageParam) => GetAllTodosApi.request(
         Pagination(number: pageParam, size: page.value.size),
       ),
       initialPageParam: page.value.number,
-      getNextPageParam: (last) =>
+      getNextPageParam: (last, allPages, lastParam, allParams) =>
           (last.page < last.totalPages) ? last.page + 1 : null,
     );
 
@@ -53,7 +53,7 @@ class InfinityPage extends HookWidget {
         scrollController.position.maxScrollExtent ==
             scrollController.position.minScrollExtent &&
         infiniteTodos.data != null &&
-        infiniteTodos.data!.isNotEmpty &&
+        infiniteTodos.data!.pages.isNotEmpty &&
         infiniteTodos.hasNextPage &&
         infiniteTodos.fetchNextPage != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -80,8 +80,8 @@ class InfinityPage extends HookWidget {
       content = Center(child: Text('Error: ${err ?? 'unknown'}'));
     }
 
-    final items =
-        infiniteTodos.data?.expand((p) => p.items).toList() ?? <Todo>[];
+    final items = infiniteTodos.data?.pages.expand((p) => p.items).toList() ??
+        <Todo>[];
 
     return Stack(
       children: [
@@ -97,7 +97,7 @@ class InfinityPage extends HookWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  "Displayed pages: ${infiniteTodos.data?.isNotEmpty == true ? infiniteTodos.data!.last.page : 1}",
+                  "Displayed pages: ${infiniteTodos.data?.pages.isNotEmpty == true ? infiniteTodos.data!.pages.last.page : 1}",
                   style: const TextStyle(color: Colors.black54),
                 ),
               ],

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'focus_manager.dart';
+import 'online_manager.dart';
 
 /// Exception thrown when a query or mutation is cancelled.
 class CancelledError implements Exception {
@@ -24,6 +26,8 @@ class Retryer<T> {
   final dynamic retryDelay; // int | Function(int, dynamic) -> int
 
   final void Function(int failureCount, dynamic error)? onFail;
+  final void Function()? onPause;
+  final void Function()? onContinue;
 
   bool _cancelled = false;
   String _status = 'pending';
@@ -31,12 +35,39 @@ class Retryer<T> {
   Timer? _timer;
   int _failureCount = 0;
 
-  Retryer(
-      {required this.fn, this.retry = 0, this.retryDelay = 1000, this.onFail});
+  /// Completer resolved by [continueRetry] to wake a paused retry loop.
+  Completer<void>? _pauseCompleter;
+
+  Retryer({
+    required this.fn,
+    this.retry = 0,
+    this.retryDelay = 1000,
+    this.onFail,
+    this.onPause,
+    this.onContinue,
+  });
 
   String status() => _status;
 
   int get failureCount => _failureCount;
+
+  /// Returns `true` when the app is focused and online — mirroring React's
+  /// `canContinue` check inside the retryer loop.
+  bool _canContinue() {
+    return focusManager.isFocused() &&
+        onlineManager.isOnline();
+  }
+
+  /// Suspends the retry loop until [continueRetry] is called or
+  /// [_canContinue] is true. Mirrors React's `pause()` promise.
+  Future<void> _pause() {
+    _pauseCompleter = Completer<void>();
+    onPause?.call();
+    return _pauseCompleter!.future.then((_) {
+      _pauseCompleter = null;
+      if (!_cancelled) onContinue?.call();
+    });
+  }
 
   Future<void> _delay(int ms) {
     final c = Completer<void>();
@@ -117,6 +148,17 @@ class Retryer<T> {
             }
           }
 
+          // ── Pause if the app is offline or unfocused, mirroring React's
+          // canContinue / pause() pattern in the retryer.
+          if (!_cancelled && !_canContinue()) {
+            await _pause();
+            if (_cancelled) {
+              completer.completeError(CancelledError());
+              _status = 'rejected';
+              return;
+            }
+          }
+
           await attempt();
         } else {
           _status = 'rejected';
@@ -136,7 +178,11 @@ class Retryer<T> {
     _timer = null;
   }
 
+  /// Wakes a paused retry that is waiting in [_pause]. Mirrors React's
+  /// `retryer.continue()` / `continueRetry()` public API.
   void continueRetry() {
-    // No-op for this simple implementation
+    if (_pauseCompleter != null && !_pauseCompleter!.isCompleted) {
+      _pauseCompleter!.complete();
+    }
   }
 }
