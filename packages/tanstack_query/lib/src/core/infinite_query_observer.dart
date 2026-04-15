@@ -1,5 +1,4 @@
 import 'package:tanstack_query/tanstack_query.dart';
-import 'infinite_query_behavior.dart';
 
 /// Observer for infinite/paginated queries.
 ///
@@ -163,10 +162,12 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
     } catch (_) {}
 
     final direction = fetchMeta?.fetchMore?.direction;
-    final isFetchingNextPage = res.isFetching && direction == FetchDirection.forward;
+    final isFetchingNextPage =
+        res.isFetching && direction == FetchDirection.forward;
     final isFetchingPreviousPage =
         res.isFetching && direction == FetchDirection.backward;
-    final isFetchNextPageError = res.isError && direction == FetchDirection.forward;
+    final isFetchNextPageError =
+        res.isError && direction == FetchDirection.forward;
     final isFetchPreviousPageError =
         res.isError && direction == FetchDirection.backward;
 
@@ -182,7 +183,8 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
       isFetchPreviousPageError: isFetchPreviousPageError,
       isRefetchError:
           res.isError && !isFetchNextPageError && !isFetchPreviousPageError,
-      isRefetching: res.isFetching && !isFetchingNextPage && !isFetchingPreviousPage,
+      isRefetching:
+          res.isFetching && !isFetchingNextPage && !isFetchingPreviousPage,
       hasNextPage: hasNextPage(opts, safeData),
       hasPreviousPage: hasPreviousPage(opts, safeData),
       fetchNextPage: hasNextPage(opts, safeData) ? fetchNextPage : null,

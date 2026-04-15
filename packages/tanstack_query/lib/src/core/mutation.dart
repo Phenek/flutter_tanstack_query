@@ -131,7 +131,7 @@ class Mutation<T, P> extends Removable {
   }
 
   /// Execute the mutation with [variables]. This updates internal state and
-  /// calls cache-level lifecycle hooks from [QueryClient.mutationCache.config].
+  /// calls cache-level lifecycle hooks from `QueryClient.mutationCache.config`.
   Future<T> execute(P variables) async {
     // onMutate hook
     try {

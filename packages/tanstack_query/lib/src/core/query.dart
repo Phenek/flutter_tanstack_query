@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:tanstack_query/tanstack_query.dart';
-import 'infinite_query_behavior.dart';
 import 'removable.dart';
 
 /// Minimal `Query` implementation to centralize fetch and observer logic.
@@ -19,7 +18,7 @@ class Query<T> extends Removable {
   /// The [FetchMeta] for the currently in-flight fetch, or `null` when idle.
   ///
   /// Mirrors React's `query.state.fetchMeta` — set synchronously before any
-  /// `await`, and cleared when the fetch settles.  [InfiniteQueryObserver]
+  /// `await`, and cleared when the fetch settles.  `InfiniteQueryObserver`
   /// reads this instead of the cached result's [fetchMeta] so that
   /// `isFetchingNextPage` is `false` during a plain refetch even when the
   /// last cached result carried `direction=forward`.
@@ -108,7 +107,8 @@ class Query<T> extends Removable {
       options: options,
       currentEntry: prevEntry,
     );
-    final effectiveBehavior = (behavior as QueryBehavior<T>?) ?? options.behavior;
+    final effectiveBehavior =
+        (behavior as QueryBehavior<T>?) ?? options.behavior;
     effectiveBehavior?.onFetch(context, this);
 
     // ── 3. Set fetchMeta synchronously ────────────────────────────────────

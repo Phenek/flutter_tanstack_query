@@ -40,6 +40,7 @@ class DefaultOptions {
   final QueryDefaultOptions queries;
   final MutationDefaultOptions mutations;
 
+  /// Creates a [DefaultOptions] with optional [queries] and [mutations] defaults.
   const DefaultOptions(
       {this.queries = const QueryDefaultOptions(),
       this.mutations = const MutationDefaultOptions()});

@@ -40,7 +40,7 @@ class InfiniteQueryBehavior<T> extends QueryBehavior<List<T>> {
   const InfiniteQueryBehavior();
 
   @override
-  void onFetch(dynamic ctx, dynamic _query) {
+  void onFetch(dynamic ctx, dynamic query) {
     final context = ctx as FetchContext<List<T>>;
     final opts = context.options as InfiniteQueryOptions<T>;
     final direction = context.meta?.fetchMore?.direction;
@@ -53,7 +53,8 @@ class InfiniteQueryBehavior<T> extends QueryBehavior<List<T>> {
       List<T> currentData;
       try {
         final typed = rawResult as QueryResult<List<T>>?;
-        currentData = typed?.data != null ? List<T>.from(typed!.data as List) : <T>[];
+        currentData =
+            typed?.data != null ? List<T>.from(typed!.data as List) : <T>[];
       } catch (_) {
         currentData = <T>[];
       }

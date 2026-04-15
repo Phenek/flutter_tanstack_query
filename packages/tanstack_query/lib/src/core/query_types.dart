@@ -85,7 +85,7 @@ class QueryOptions<T> {
 
   /// Optional fetch behavior hook. Implementations replace the default [queryFn]
   /// with a custom async closure before [Query] creates its [Retryer].
-  /// [InfiniteQueryObserver] injects [InfiniteQueryBehavior] here (mirroring
+  /// `InfiniteQueryObserver` injects [InfiniteQueryBehavior] here (mirroring
   /// React's `InfiniteQueryObserver.setOptions({ behavior: infiniteQueryBehavior() })`).
   final QueryBehavior<T>? behavior;
 

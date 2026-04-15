@@ -1,8 +1,17 @@
 import 'dart:async';
 
+/// Exception thrown when a query or mutation is cancelled.
 class CancelledError implements Exception {
+  /// Whether the cancellation should be silent (suppress error reporting).
   final bool silent;
+
+  /// Whether the cancelled operation should revert any optimistic updates.
   final bool revert;
+
+  /// Creates a [CancelledError].
+  ///
+  /// Set [silent] to `true` to suppress error reporting.
+  /// Set [revert] to `true` to undo any optimistic updates.
   CancelledError({this.silent = false, this.revert = false});
 
   @override

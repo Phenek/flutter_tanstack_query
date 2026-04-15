@@ -1,3 +1,12 @@
+## 1.2.6 (15/04/26)
+
+- Fix: Garbage collection bug where active `Query` could be evicted after `invalidateQueries()` or `clear()` — mirrors React's GC lifecycle exactly.
+- Arch: `QueryObserver` mirrors React's GC lifecycle exactly by rebuilding the underlying `Query` reference after cache invalidation.
+- Arch: Rework `useInfiniteQuery` internals to mirror React's architecture exactly — extract `InfiniteQueryBehavior` (port of `infiniteQueryBehavior.ts`), rewrite `InfiniteQueryObserver` (port of `InfiniteQueryObserver.ts`), and hook behavior into `Query.fetch()` for React-parity dedup, direction tracking, and page management.
+- Fix: `isFetchingNextPage` incorrectly `true` on remount after `fetchNextPage`.
+- Fix: Rapid `fetchNextPage` calls no longer cause stuck `isFetchingNextPage` state.
+- Fix: Mismatched generic cache entries (e.g. `InfiniteQueryResult<Object>` for a `useInfiniteQuery<int>`) are now safely detected and discarded, triggering a fresh fetch.
+
 ## 1.2.5 (23/01/26)
 
 - Fix: Prevent infinite widget rebuilds when passing inline (non-const) `mutationKey` to `useMutation`.

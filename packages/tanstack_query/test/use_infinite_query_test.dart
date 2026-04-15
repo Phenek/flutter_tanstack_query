@@ -1117,8 +1117,8 @@ void main() {
     expect(holder.value!.status, equals(QueryStatus.success));
 
     // Cleanup: unmount widget and clear cache so GC timers don't linger.
-    await tester.pumpWidget(
-        QueryClientProvider(client: client, child: MaterialApp(home: Container())));
+    await tester.pumpWidget(QueryClientProvider(
+        client: client, child: MaterialApp(home: Container())));
     client.queryCache.clear();
   });
 
@@ -1144,8 +1144,8 @@ void main() {
       isFetching: false,
       error: null,
       isFetchingNextPage: false,
-      fetchMeta:
-          const FetchMeta(fetchMore: FetchMore(direction: FetchDirection.forward)),
+      fetchMeta: const FetchMeta(
+          fetchMore: FetchMore(direction: FetchDirection.forward)),
     );
     // Use an old timestamp so staleTime=0 considers it stale and triggers a refetch.
     client.queryCache[cacheKey] = QueryCacheEntry(
@@ -1386,7 +1386,8 @@ void main() {
     expect(
       queryCalls.where((p) => p == 2).length,
       equals(1),
-      reason: 'page 2 queryFn must be called exactly once despite 10 rapid calls',
+      reason:
+          'page 2 queryFn must be called exactly once despite 10 rapid calls',
     );
     expect(holder.value!.data, equals([1, 2]));
     expect(holder.value!.hasNextPage, isFalse);
