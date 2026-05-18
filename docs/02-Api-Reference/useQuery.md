@@ -45,7 +45,7 @@ QueryResult<T> useQuery<T>({
 - `queryKey: List<Object>`
   - **Required**
   - The query key to use for this query.
-  - The query key will be hashed into a stable hash. See [Query Keys](../03-Guides-&-Concepts/03-query-keys.md) for more information.
+  - The query key will be hashed into a stable hash. See [Query Keys](../guides-and-concepts/query-keys) for more information.
   - The query will automatically update when this key changes (as long as `enabled` is not set to `false`).
 - `queryFn: Future<T> Function()`
   - **Required**
