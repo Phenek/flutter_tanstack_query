@@ -83,42 +83,45 @@ class QueryClient {
     return;
   }
 
+  /// Mark matching queries as stale and refetch the active ones in the
+  /// background. Mirrors React's `QueryClient.invalidateQueries()`.
+  ///
+  /// The cached data is **kept** while the refetch is in flight: observers see
+  /// `status: success`, their previous `data`, `isFetching: true` and
+  /// `isStale: true`, then the fresh data once it lands. Queries with no
+  /// enabled observer are only marked stale; they refetch on their next mount.
+  ///
+  /// - [queryKey] `null` invalidates every query.
+  /// - [exact] `true` matches the serialized key exactly, otherwise any key
+  ///   starting with it (prefix match).
   void invalidateQueries({List<Object>? queryKey, bool exact = false}) {
-    // If queryKey is null we invalidate everything.
-    if (queryKey == null) {
-      // Snapshot all Query instances BEFORE clear() destroys them.
-      final queries = queryCache.getAllQueries();
-      queryCache.clear();
-      // Notify observers on the (now-destroyed) old queries. Each observer's
-      // refetch() calls _updateQuery() which builds a fresh Query in the cache.
-      for (var q in queries) {
-        q.notifyObserversRefetch();
+    final prefix = queryKey == null ? null : queryKeyToCacheKey(queryKey);
+    bool matches(String key) =>
+        prefix == null || (exact ? key == prefix : key.startsWith(prefix));
+
+    // Union of cache entries and built Query instances: a Query may exist
+    // without a cache entry (fetch never settled) and vice-versa
+    // (setQueryData before any observer mounted).
+    final keys = <String>{
+      ...queryCache.keys,
+      ...queryCache.getAllQueries().map((q) => q.cacheKey),
+    }.where(matches).toList();
+
+    final toRefetch = <Query>[];
+    for (final key in keys) {
+      final q = queryCache.getQuery(key);
+      if (q == null) {
+        queryCache.markInvalidated(key);
+        continue;
       }
-      return;
+      q.invalidate();
+      if (q.isActive) toRefetch.add(q);
     }
 
-    if (exact) {
-      final cacheKey = queryKeyToCacheKey(queryKey);
-      final q = queryCache.getQuery(cacheKey);
-      if (q != null) {
-        queryCache.remove(q);
-        // Notify observers on the removed query; they'll rebuild via _updateQuery().
-        q.notifyObserversRefetch();
-      }
-    } else {
-      final cacheKey = queryKeyToCacheKey(queryKey);
-      // Snapshot matching Query instances BEFORE removeWhere() destroys them.
-      final matchingQueries = queryCache.keys
-          .where((k) => k.startsWith(cacheKey))
-          .map((k) => queryCache.getQuery(k))
-          .whereType<Query>()
-          .toList();
-
-      queryCache.removeWhere((key, value) => key.startsWith(cacheKey));
-
-      for (var q in matchingQueries) {
-        q.notifyObserversRefetch();
-      }
+    // Refetch in a second pass so every observer already sees isStale before
+    // the first pending result is written (React: batch invalidate → refetch).
+    for (final q in toRefetch) {
+      q.notifyObserversRefetch();
     }
   }
 
@@ -138,9 +141,11 @@ class QueryClient {
         isPlaceholderData: false);
 
     queryCache[cacheKey] = QueryCacheEntry(queryResult, DateTime.now());
-    // Mirrors React: notify observers directly through the Query object
-    // (setData -> dispatch -> onQueryUpdate), not via cache events.
-    queryCache.getQuery(cacheKey)?.notifyObservers();
+    // Mirrors React: setData dispatches `success`, which clears isInvalidated
+    // and notifies observers directly through the Query object.
+    queryCache.getQuery(cacheKey)
+      ?..markFresh()
+      ..notifyObservers();
   }
 
   /// Synchronously updates cached infinite query data for [keys] using
@@ -170,8 +175,11 @@ class QueryClient {
     } catch (_) {}
 
     queryCache[cacheKey] = QueryCacheEntry(queryResult, DateTime.now());
-    // Mirrors React: notify observers directly through the Query object.
-    queryCache.getQuery(cacheKey)?.notifyObservers();
+    // Mirrors React: setData dispatches `success`, which clears isInvalidated
+    // and notifies observers directly through the Query object.
+    queryCache.getQuery(cacheKey)
+      ?..markFresh()
+      ..notifyObservers();
   }
 
   /// Clears the entire in-memory cache and notifies listeners that cached

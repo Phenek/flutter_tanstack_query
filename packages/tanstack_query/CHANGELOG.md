@@ -1,3 +1,12 @@
+## 1.2.8 (05/10/26)
+
+- Fix: `invalidateQueries` now keeps cached data while refetching in the background, like React Query. Previously the UI briefly showed `pending` with `data: null`.
+- Fix: `invalidateQueries` only refetches active queries. Disabled or unmounted ones are marked stale and refetch on next mount.
+- Fix: Invalidated infinite queries keep and refetch all loaded pages.
+- Fix: A disabled `useQuery` with cached data no longer stays `pending` on mount.
+- Feat: `Query.isInvalidated`. An invalidated query is stale regardless of `staleTime` until new data lands.
+- Chore: Fix unused catch variable lint.
+
 ## 1.2.7 (15/04/26)
 
 - Fix: `gcTime: 0` now evicts the cache immediately on unmount (next event loop tick), matching React Query's `setTimeout(..., 0)` behaviour. Previously `gcTime: 0` was silently treated as "GC disabled".

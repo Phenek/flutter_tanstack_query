@@ -37,7 +37,7 @@ class Subscribable<TListener extends Function> {
     for (var l in listeners) {
       try {
         fn(l);
-      } catch (e, _) {
+      } catch (_) {
         // Swallow errors from listeners to avoid disrupting other listeners.
       }
     }

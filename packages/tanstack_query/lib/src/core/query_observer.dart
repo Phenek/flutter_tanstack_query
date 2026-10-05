@@ -110,7 +110,12 @@ class QueryObserver<TQueryFnData, TError, TData>
         }
         refetch();
       } else {
+        // No fetch will follow (disabled, fresh, or refetchOnMount false):
+        // never hide cached data behind a pending state that nothing would
+        // resolve.
+        _clearStaleDataOnMount = false;
         _updateResult();
+        _notify();
       }
     }
   }
@@ -127,6 +132,10 @@ class QueryObserver<TQueryFnData, TError, TData>
 
   @protected
   bool shouldClearStaleDataOnMount() {
+    // A disabled observer never fetches on mount, so hiding its cached data
+    // would leave it pending forever.
+    if (!(options.enabled ?? true)) return false;
+
     final staleTime =
         options.staleTime ?? _client.defaultOptions.queries.staleTime ?? 0;
     if (staleTime != 0) return false;
@@ -158,6 +167,7 @@ class QueryObserver<TQueryFnData, TError, TData>
         options.retryOnMount ?? _client.defaultOptions.queries.retryOnMount;
 
     final isStale = entry == null ||
+        _client.queryCache.isInvalidated(cacheKey) ||
         (DateTime.now().difference(entry.timestamp).inMilliseconds >
             (options.staleTime ?? 0));
 
@@ -253,7 +263,10 @@ class QueryObserver<TQueryFnData, TError, TData>
     final int lastUpdatedAt = res.dataUpdatedAt ??
         (entry != null ? entry.timestamp.millisecondsSinceEpoch : 0);
 
+    // Mirrors React's isStaleByTime: no data, invalidated, or older than
+    // staleTime. An invalidated query stays stale until fresh data lands.
     final isStale = entry == null ||
+        (_query?.isInvalidated ?? false) ||
         DateTime.now()
                 .difference(DateTime.fromMillisecondsSinceEpoch(lastUpdatedAt))
                 .inMilliseconds >

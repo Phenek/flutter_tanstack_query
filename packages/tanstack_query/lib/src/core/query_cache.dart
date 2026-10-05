@@ -79,6 +79,12 @@ class QueryCache extends Subscribable<QueryCacheListener> {
   // Map of built Query instances by cache key
   final Map<String, dynamic> _queries = {};
 
+  // Cache keys invalidated while no Query instance was built for them (e.g.
+  // data written with setQueryData before any useQuery mounted). The flag is
+  // transferred onto the Query when build() creates it, so a later observer
+  // treats the data as stale and refetches on mount.
+  final Set<String> _invalidatedKeys = <String>{};
+
   QueryCache({this.config = const QueryCacheConfig()});
 
   QueryCacheEntry? operator [](String key) => _cache[key];
@@ -94,6 +100,7 @@ class QueryCache extends Subscribable<QueryCacheListener> {
   void set(String key, QueryCacheEntry value, {String? callerId}) {
     final existed = _cache.containsKey(key);
     _cache[key] = value;
+    _invalidatedKeys.remove(key);
     _notifyListeners(QueryCacheNotifyEvent(
         existed ? QueryCacheEventType.updated : QueryCacheEventType.added,
         key,
@@ -130,6 +137,7 @@ class QueryCache extends Subscribable<QueryCacheListener> {
     if (identical(queryInMap, query)) {
       _queries.remove(query.cacheKey);
       _cache.remove(query.cacheKey);
+      _invalidatedKeys.remove(query.cacheKey);
       _notifyListeners(QueryCacheNotifyEvent(
           QueryCacheEventType.removed, query.cacheKey, null,
           callerId: callerId));
@@ -145,6 +153,7 @@ class QueryCache extends Subscribable<QueryCacheListener> {
       return shouldRemove;
     });
     for (var entry in removedEntries.entries) {
+      _invalidatedKeys.remove(entry.key);
       // If there was a built Query instance for this key, destroy and remove it.
       if (_queries.containsKey(entry.key)) {
         final q = _queries.remove(entry.key);
@@ -250,6 +259,7 @@ class QueryCache extends Subscribable<QueryCacheListener> {
     final orphanKeys = _cache.keys.toList();
     for (final k in orphanKeys) {
       _cache.remove(k);
+      _invalidatedKeys.remove(k);
       _notifyListeners(QueryCacheNotifyEvent(
           QueryCacheEventType.removed, k, null,
           callerId: callerId));
@@ -268,6 +278,18 @@ class QueryCache extends Subscribable<QueryCacheListener> {
   /// Returns a snapshot of all currently registered Query instances.
   List<Query> getAllQueries() => _queries.values.whereType<Query>().toList();
 
+  /// Mark a cache key as invalidated when no Query instance exists for it yet.
+  /// See [_invalidatedKeys].
+  void markInvalidated(String cacheKey) {
+    _invalidatedKeys.add(cacheKey);
+  }
+
+  /// Whether [cacheKey] was invalidated (either on its Query, or pending
+  /// transfer because no Query has been built yet).
+  bool isInvalidated(String cacheKey) =>
+      _invalidatedKeys.contains(cacheKey) ||
+      (getQuery(cacheKey)?.isInvalidated ?? false);
+
   /// Build or return an existing `Query` instance for the given options.
   Query<T> build<T>(QueryClient client, QueryOptions<T> options) {
     final cacheKey = queryKeyToCacheKey(options.queryKey);
@@ -277,6 +299,11 @@ class QueryCache extends Subscribable<QueryCacheListener> {
 
     final q = Query<T>(client, options);
     _queries[cacheKey] = q;
+
+    // Transfer a pending invalidation onto the freshly built Query.
+    if (_invalidatedKeys.remove(cacheKey)) {
+      q.invalidate();
+    }
 
     // If there's no cache entry yet and initialData is provided, persist it
     // to the cache so queries start with initialized data.

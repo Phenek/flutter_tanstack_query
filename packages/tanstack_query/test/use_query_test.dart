@@ -954,10 +954,11 @@ void main() {
     expect(holder.value!.status, equals(QueryStatus.success));
     expect(holder.value!.data, equals('data-1'));
 
-    // invalidateQueries(exact) removes Q1, then calls Q1.notifyObserversRefetch().
-    // The observer calls _updateQuery() → build() creates Q2
-    // → Q1.removeObserver(this) → Q1 schedules a new GC timer → Q2.addObserver(this).
-    // Before the fix, Q1's GC would later evict Q2's live cache entry.
+    // invalidateQueries(exact) marks Q1 invalidated and refetches it in place
+    // (since 1.2.8 the Query is kept, not removed). Historically (<= 1.2.7) it
+    // removed Q1 and the observer rebuilt a Q2; Q1's orphaned GC timer could
+    // then evict Q2's live cache entry. This test still guards that path via
+    // clear() + GC timing below.
     queryClient.invalidateQueries(queryKey: keyList, exact: true);
     await tester.pump();
     await tester.pumpAndSettle();

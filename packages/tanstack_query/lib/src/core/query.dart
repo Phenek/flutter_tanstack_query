@@ -15,6 +15,16 @@ class Query<T> extends Removable {
 
   FetchMeta? _fetchMeta;
 
+  bool _isInvalidated = false;
+
+  /// Whether this query has been marked out of date by
+  /// `QueryClient.invalidateQueries`. Mirrors React's `state.isInvalidated`.
+  ///
+  /// An invalidated query is always considered stale regardless of
+  /// `staleTime`, but keeps its cached data until the next successful fetch
+  /// replaces it.
+  bool get isInvalidated => _isInvalidated;
+
   /// The [FetchMeta] for the currently in-flight fetch, or `null` when idle.
   ///
   /// Mirrors React's `query.state.fetchMeta` — set synchronously before any
@@ -52,6 +62,47 @@ class Query<T> extends Removable {
   QueryResult<T>? get result => entry?.result as QueryResult<T>?;
 
   bool get hasObservers => _observers.isNotEmpty;
+
+  /// Whether at least one observer is enabled. Mirrors React's
+  /// `Query.isActive()`: only active queries are refetched by
+  /// `invalidateQueries`.
+  bool get isActive {
+    for (var o in _observers) {
+      try {
+        if ((o.options.enabled as bool?) ?? true) return true;
+      } catch (_) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Mark this query as stale without touching its cached data and notify
+  /// observers so their `isStale` flag updates. Mirrors React's
+  /// `Query.invalidate()` → `dispatch({type: 'invalidate'})`.
+  void invalidate() {
+    if (_isInvalidated) return;
+    _isInvalidated = true;
+    _notifyObservers();
+  }
+
+  /// Clear the invalidated flag. Called when fresh data lands in the cache
+  /// (successful fetch or `setQueryData`), mirroring React's `success` action.
+  void markFresh() {
+    _isInvalidated = false;
+  }
+
+  /// Whether the cached data is stale for the given [staleTime] (ms).
+  /// Mirrors React's `Query.isStaleByTime()`: no data, invalidated, or older
+  /// than `staleTime`.
+  bool isStaleByTime(int staleTime) {
+    final res = result;
+    if (res == null || res.data == null) return true;
+    if (_isInvalidated) return true;
+    final updatedAt =
+        res.dataUpdatedAt ?? entry?.timestamp.millisecondsSinceEpoch ?? 0;
+    return DateTime.now().millisecondsSinceEpoch - updatedAt > staleTime;
+  }
 
   void _notifyObservers() {
     for (var o in List<dynamic>.from(_observers)) {
@@ -179,6 +230,8 @@ class Query<T> extends Removable {
       final value = await running;
       final settledFetchMeta = _fetchMeta;
       _fetchMeta = null; // clear before notify so createResult sees idle state
+      _isInvalidated =
+          false; // fresh data: no longer invalidated (React `success`)
       final queryResult = QueryResult<T>(
           cacheKey, QueryStatus.success, value, null,
           isFetching: false,
