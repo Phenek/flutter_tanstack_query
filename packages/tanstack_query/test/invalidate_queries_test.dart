@@ -13,6 +13,11 @@ import 'package:tanstack_query/tanstack_query.dart';
 void main() {
   late QueryClient queryClient;
 
+  // With the default staleTime (0) data turns stale after 1 ms of real time,
+  // which makes `isStale` assertions timing-dependent. A long staleTime means
+  // any `isStale: true` below can only come from invalidation.
+  const oneHour = 60.0 * 60 * 1000;
+
   setUp(() {
     queryClient = QueryClient(
         defaultOptions: const DefaultOptions(
@@ -51,7 +56,8 @@ void main() {
 
   testWidgets('keeps previous data visible while refetching', (tester) async {
     var n = 0;
-    final renders = await mount(tester, ['inv-keep'], queryFn: () async {
+    final renders = await mount(tester, ['inv-keep'], staleTime: oneHour,
+        queryFn: () async {
       n++;
       await Future.delayed(const Duration(milliseconds: 50));
       return 'data-$n';
@@ -154,7 +160,9 @@ void main() {
           }),
           HookBuilder(builder: (_) {
             rendersC.add(useQuery<String>(
-                queryKey: ['todos', 1], queryFn: () async => 'c-${++child}'));
+                queryKey: ['todos', 1],
+                staleTime: oneHour,
+                queryFn: () async => 'c-${++child}'));
             return Container();
           }),
         ]),
@@ -181,7 +189,9 @@ void main() {
     // Seed the cache so the disabled observer has data to show.
     queryClient.setQueryData<String>(['inv-disabled'], (_) => 'seeded');
     final renders = await mount(tester, ['inv-disabled'],
-        enabled: false, queryFn: () async => 'fetched-${++n}');
+        enabled: false,
+        staleTime: oneHour,
+        queryFn: () async => 'fetched-${++n}');
     expect(renders.last.data, 'seeded');
     expect(n, 0);
 
@@ -203,8 +213,8 @@ void main() {
     expect(queryClient.queryCache.find(['inv-orphan'])?.result.data, 'seeded');
 
     var n = 0;
-    final renders = await mount(tester, ['inv-orphan'],
-        staleTime: 60 * 60 * 1000, queryFn: () async {
+    final renders = await mount(tester, ['inv-orphan'], staleTime: oneHour,
+        queryFn: () async {
       n++;
       await Future.delayed(const Duration(milliseconds: 20));
       return 'fresh-$n';
@@ -218,8 +228,8 @@ void main() {
   testWidgets('setQueryData after invalidation clears the stale flag',
       (tester) async {
     var n = 0;
-    final renders = await mount(tester, ['inv-setdata'],
-        staleTime: 60 * 60 * 1000, queryFn: () async {
+    final renders = await mount(tester, ['inv-setdata'], staleTime: oneHour,
+        queryFn: () async {
       n++;
       await Future.delayed(const Duration(milliseconds: 50));
       return 'data-$n';

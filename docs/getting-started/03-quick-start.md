@@ -5,9 +5,9 @@ title: Quick Start
 
 This code snippet very briefly illustrates the 3 core concepts of React Query:
 
-- [Queries](../guides-and-concepts/queries)
-- [Mutations](../guides-and-concepts/mutations)
-- [Query Invalidation](../guides-and-concepts/query-invalidation)
+- [Queries](../guides/02-queries.md)
+- [Mutations](../guides/09-mutations.md)
+- [Query Invalidation](../guides/10-query-invalidation.md)
 
 [//]: # 'Example' 
 
