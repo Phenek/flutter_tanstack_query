@@ -98,7 +98,9 @@ class InfinityPage extends HookWidget {
                 const SizedBox(height: 4),
                 Text(
                   "Displayed pages: ${infiniteTodos.data?.isNotEmpty == true ? infiniteTodos.data!.last.page : 1}",
-                  style: const TextStyle(color: Colors.black54),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),

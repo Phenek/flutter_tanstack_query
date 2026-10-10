@@ -56,38 +56,51 @@ void main() {
 class App extends HookWidget {
   const App({super.key});
 
+  // flutter-tanstack.com accents: terracotta-400 in light mode, terracotta-300 in dark mode
+  static const _seedLight = Color(0xFFD3481B);
+  static const _seedDark = Color(0xFFE06E49);
+
+  ThemeData _theme(Brightness brightness) => ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: brightness == Brightness.light ? _seedLight : _seedDark,
+          brightness: brightness,
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final content = useState<Widget>(TodosPage());
 
     return MaterialApp(
       title: 'tanstack_query Example',
-      theme: ThemeData(primarySwatch: Colors.blue),
+      theme: _theme(Brightness.light),
+      darkTheme: _theme(Brightness.dark),
+      // ?brightness= is set by the site embedding the app, so it matches the page theme
+      themeMode: switch (Uri.base.queryParameters['brightness']) {
+        'dark' => ThemeMode.dark,
+        'light' => ThemeMode.light,
+        _ => ThemeMode.system,
+      },
       home: Scaffold(
         body: SafeArea(child: content.value),
-        bottomNavigationBar: BottomNavigationBar(
-          currentIndex: content.value is TodosPage ? 0 : 1,
-          onTap: (index) {
-            if (index == 0) {
-              // Always create a new TodosPage, to see the librairy in action
-              content.value = TodosPage();
-            } else {
-              // Always create a new InfinityPage, to see the librairy in action
-              content.value = InfinityPage();
-            }
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: content.value is TodosPage ? 0 : 1,
+          onDestinationSelected: (index) {
+            // Always create a new page, to see the librairy in action
+            content.value = index == 0 ? TodosPage() : InfinityPage();
           },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.view_agenda),
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.view_agenda_outlined),
+              selectedIcon: Icon(Icons.view_agenda),
               label: 'Classical',
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.all_inclusive),
+            NavigationDestination(
+              icon: Icon(Icons.all_inclusive_outlined),
+              selectedIcon: Icon(Icons.all_inclusive),
               label: 'Infinity',
             ),
           ],
-          selectedItemColor: Colors.blue,
-          unselectedItemColor: Colors.black54,
         ),
       ),
     );

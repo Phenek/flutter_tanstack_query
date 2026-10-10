@@ -86,7 +86,9 @@ class TodosPage extends HookWidget {
                             getAllTodosQuery.data?.totalCount ?? 0,
                             page.value,
                           ),
-                          style: const TextStyle(color: Colors.black54),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),

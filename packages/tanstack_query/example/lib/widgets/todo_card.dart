@@ -62,6 +62,7 @@ class TodoCard extends HookWidget {
     }
 
     final editingController = useTextEditingController(text: todo.title);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Dismissible(
       key: ValueKey('todo-${todo.id}'),
@@ -137,33 +138,33 @@ class TodoCard extends HookWidget {
       },
       background: Container(
         decoration: BoxDecoration(
-          color: Colors.blue[600],
+          color: colorScheme.primary,
           borderRadius: BorderRadius.circular(12),
         ),
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.only(left: 16),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.edit, color: Colors.white),
-            SizedBox(width: 8),
-            Text('Edit', style: TextStyle(color: Colors.white)),
+          children: [
+            Icon(Icons.edit, color: colorScheme.onPrimary),
+            const SizedBox(width: 8),
+            Text('Edit', style: TextStyle(color: colorScheme.onPrimary)),
           ],
         ),
       ),
       secondaryBackground: Container(
         decoration: BoxDecoration(
-          color: Colors.red[600],
+          color: colorScheme.error,
           borderRadius: BorderRadius.circular(12),
         ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 16),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            Text('Delete', style: TextStyle(color: Colors.white)),
-            SizedBox(width: 8),
-            Icon(Icons.delete, color: Colors.white),
+          children: [
+            Text('Delete', style: TextStyle(color: colorScheme.onError)),
+            const SizedBox(width: 8),
+            Icon(Icons.delete, color: colorScheme.onError),
           ],
         ),
       ),
@@ -192,7 +193,7 @@ class TodoCard extends HookWidget {
                     const SizedBox(height: 8),
                     Text(
                       'ID: ${todo.id} • Completed: ${todo.completed ? 'Yes' : 'No'}',
-                      style: const TextStyle(color: Colors.black54),
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
