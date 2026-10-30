@@ -26,6 +26,33 @@ class QueryClientProvider extends HookWidget {
   const QueryClientProvider(
       {super.key, required this.client, required this.child});
 
+  /// Re-provides the client of [context] to a subtree mounted **outside** the
+  /// provider, typically an `Overlay`: a dragged `ReorderableListView` item, a
+  /// route pushed with `Navigator`, or a `showDialog` builder all build under
+  /// the overlay, where `useQueryClient()` finds no provider and throws.
+  ///
+  /// [context] must be a context that still sees the provider — capture it in
+  /// the enclosing `build`, then call this inside the overlay builder:
+  ///
+  /// ```dart
+  /// ReorderableListView(
+  ///   proxyDecorator: (child, index, animation) =>
+  ///       QueryClientProvider.portal(context, child: child),
+  ///   ...
+  /// )
+  /// ```
+  ///
+  /// It only re-exposes the client; mounting stays owned by the real provider,
+  /// so focus/online subscriptions are never duplicated.
+  static Widget portal(BuildContext context, {required Widget child}) {
+    final queryClientContext =
+        Provider.of<QueryClientContext>(context, listen: false);
+    return Provider<QueryClientContext>.value(
+      value: queryClientContext,
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final queryClientContext = useMemoized(() {

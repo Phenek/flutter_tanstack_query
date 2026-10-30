@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:tanstack_query/tanstack_query.dart';
-import '../core/infinite_query_observer.dart';
 
 /// Hook for paginated/infinite queries.
 ///

@@ -71,6 +71,12 @@ class QueryObserver<TQueryFnData, TError, TData>
 
   QueryResult<TData> getCurrentResult() => _currentResult;
 
+  /// The client this observer was built with. Exposed for subclasses living in
+  /// another library file (`_client` is library-private), so they never have to
+  /// fall back to the `QueryClient.instance` singleton.
+  @protected
+  QueryClient get client => _client;
+
   /// Fetch data for this observer. Supports pagination metadata for
   /// infinite queries.
   Future<QueryResult<TData>> fetch(
@@ -80,10 +86,7 @@ class QueryObserver<TQueryFnData, TError, TData>
     if (_query == null) return _currentResult;
 
     try {
-      await _query!.fetch(meta: meta).timeout(Duration(seconds: 4),
-          onTimeout: () {
-        return null;
-      });
+      await _query!.fetch(meta: meta);
     } catch (e) {
       if (throwOnError == true) rethrow;
     } finally {

@@ -1,3 +1,17 @@
+## Unreleased
+
+- Feat: `QueryClientProvider.portal(context, child:)` re-exposes the client to a subtree mounted
+  outside the provider (an `Overlay`: a dragged `ReorderableListView` item, a dialog builder), where
+  `useQueryClient()` used to throw. It does not mount the client a second time.
+- Fix: `QueryObserver.fetch()` no longer wraps the fetch in a hardcoded 4 s `timeout`. A `queryFn`
+  slower than 4 s resolved the awaited result as still-pending while the request kept running.
+- Fix: `InfiniteQueryObserver` reads the `QueryClient` it was built with instead of the
+  `QueryClient.instance` singleton, which silently rerouted observers to the last client built.
+- Fix: export `InfiniteQueryObserver` from `tanstack_query.dart` — it was reachable only by a
+  relative import inside the package.
+- Chore: `test/test_utils.dart`, shared test helpers mirroring `@tanstack/query-test-utils`
+  (`queryKey()`, `sleep()`, `testQueryClient()`, `pumpHook()` with a rebuild counter).
+
 ## 1.2.8 (05/10/26)
 
 - Fix: `invalidateQueries` now keeps cached data while refetching in the background, like React Query. Previously the UI briefly showed `pending` with `data: null`.

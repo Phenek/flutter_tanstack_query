@@ -94,7 +94,7 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
   @override
   bool shouldFetchOnMount() {
     final cacheKey = queryKeyToCacheKey(options.queryKey);
-    final entry = QueryClient.instance.queryCache[cacheKey];
+    final entry = client.queryCache[cacheKey];
 
     // Accept both InfiniteQueryResult (legacy) and plain QueryResult<List<T>>
     // (written by the new Query.fetch() + InfiniteQueryBehavior path).
@@ -139,13 +139,13 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
     // InfiniteQueryResult — preserving backward-compat for tests that cast
     // client.queryCache[key]!.result as InfiniteQueryResult.
     final cacheKey = queryKeyToCacheKey(opts.queryKey);
-    final settled = QueryClient.instance.queryCache[cacheKey]?.result;
+    final settled = client.queryCache[cacheKey]?.result;
 
     if (settled is InfiniteQueryResult<T>) return settled;
 
     if (settled is QueryResult<List<T>>) {
       final wrapped = _buildInfiniteResult(opts, settled, meta);
-      QueryClient.instance.queryCache[cacheKey] =
+      client.queryCache[cacheKey] =
           QueryCacheEntry(wrapped, DateTime.now());
       // Fan-out to all observers on this Query (mirrors React's #dispatch fan-out).
       q.notifyObservers();
