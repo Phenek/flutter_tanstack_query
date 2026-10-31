@@ -231,11 +231,13 @@ class QueryClient {
       staleTime: options.staleTime ?? defaults.staleTime ?? queries.staleTime,
       enabled: options.enabled ?? defaults.enabled ?? queries.enabled,
       retry: options.retry ?? defaults.retry ?? queries.retry,
-      retryDelay: options.retryDelay ?? defaults.retryDelay ?? queries.retryDelay,
+      retryDelay:
+          options.retryDelay ?? defaults.retryDelay ?? queries.retryDelay,
       retryOnMount:
           options.retryOnMount ?? defaults.retryOnMount ?? queries.retryOnMount,
-      refetchOnMount:
-          options.refetchOnMount ?? defaults.refetchOnMount ?? queries.refetchOnMount,
+      refetchOnMount: options.refetchOnMount ??
+          defaults.refetchOnMount ??
+          queries.refetchOnMount,
       gcTime: options.gcTime ?? defaults.gcTime ?? queries.gcTime,
       refetchOnWindowFocus: options.refetchOnWindowFocus ??
           defaults.refetchOnWindowFocus ??
@@ -435,8 +437,7 @@ class QueryClient {
       staleTime: staleTime ?? keyDefaults.staleTime ?? queries.staleTime,
       gcTime: gcTime ?? keyDefaults.gcTime ?? queries.gcTime,
       retry: retry ?? keyDefaults.retry ?? queries.retry ?? false,
-      retryDelay:
-          retryDelay ?? keyDefaults.retryDelay ?? queries.retryDelay,
+      retryDelay: retryDelay ?? keyDefaults.retryDelay ?? queries.retryDelay,
     );
 
     final query = queryCache.build<List<T>>(this, options);

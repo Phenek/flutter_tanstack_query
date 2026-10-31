@@ -57,15 +57,18 @@ void main() {
 
   tearDown(timeoutManager.reset);
 
-  testWidgets('garbage collection is scheduled through the provider', (tester) async {
+  testWidgets('garbage collection is scheduled through the provider',
+      (tester) async {
     // Routing GC through the manager is what lets a test drive the clock instead
     // of waiting out a real 5-minute timer.
-    final client = testQueryClient(queries: const QueryDefaultOptions(gcTime: 1000));
+    final client =
+        testQueryClient(queries: const QueryDefaultOptions(gcTime: 1000));
     final key = queryKey();
 
     await pumpHook(
       tester,
-      () => useQuery<String>(queryKey: key, queryFn: () async => 'ok', gcTime: 1000),
+      () => useQuery<String>(
+          queryKey: key, queryFn: () async => 'ok', gcTime: 1000),
       client: client,
     );
     await tester.pumpAndSettle();
@@ -83,7 +86,8 @@ void main() {
     expect(client.queryCache.containsKey(cacheKey), isFalse);
   });
 
-  testWidgets('retry delays are scheduled through the provider', (tester) async {
+  testWidgets('retry delays are scheduled through the provider',
+      (tester) async {
     final client = testQueryClient();
     final key = queryKey();
     var calls = 0;

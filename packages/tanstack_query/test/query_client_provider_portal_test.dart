@@ -27,7 +27,8 @@ void main() {
 
   setUp(() => queryClient = testQueryClient());
 
-  testWidgets('QueryClientProvider.portal re-exposes the client to that overlay',
+  testWidgets(
+      'QueryClientProvider.portal re-exposes the client to that overlay',
       (tester) async {
     QueryClient? seen;
 

@@ -40,10 +40,12 @@ void main() {
       );
 
       await Future<void>.delayed(Duration.zero);
-      expect(seen, ['a'], reason: 'the transaction counter must unwind in a finally');
+      expect(seen, ['a'],
+          reason: 'the transaction counter must unwind in a finally');
     });
 
-    test('a scheduled callback outside a batch is deferred, never synchronous', () async {
+    test('a scheduled callback outside a batch is deferred, never synchronous',
+        () async {
       final seen = <String>[];
       notifyManager.schedule(() => seen.add('a'));
       expect(seen, isEmpty);
@@ -53,7 +55,8 @@ void main() {
   });
 
   group('notification guard', () {
-    testWidgets('a single fetch rebuilds once past the initial build', (tester) async {
+    testWidgets('a single fetch rebuilds once past the initial build',
+        (tester) async {
       final client = testQueryClient();
       final key = queryKey();
 
@@ -72,10 +75,12 @@ void main() {
 
       expect(probe.value.data, 'ok');
       expect(probe.rebuilds, 2,
-          reason: 'initial pending build, then one build for the settled result');
+          reason:
+              'initial pending build, then one build for the settled result');
     });
 
-    testWidgets('recomputing an identical result does not wake listeners', (tester) async {
+    testWidgets('recomputing an identical result does not wake listeners',
+        (tester) async {
       final client = testQueryClient();
       final key = queryKey();
 
@@ -99,7 +104,8 @@ void main() {
       expect(probe.rebuilds, settled);
     });
 
-    testWidgets('two observers on one key rebuild once each per fetch', (tester) async {
+    testWidgets('two observers on one key rebuild once each per fetch',
+        (tester) async {
       final client = testQueryClient();
       final key = queryKey();
       var calls = 0;
@@ -113,7 +119,8 @@ void main() {
             },
           );
 
-      final probe = await pumpHook(tester, () => [hook(), hook()].last, client: client);
+      final probe =
+          await pumpHook(tester, () => [hook(), hook()].last, client: client);
       await tester.pumpAndSettle();
 
       expect(calls, 1, reason: 'the fetch is deduped by key');

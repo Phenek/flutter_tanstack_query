@@ -65,7 +65,8 @@ class QueryDefaults {
         retryOnMount: other.retryOnMount ?? retryOnMount,
         refetchOnMount: other.refetchOnMount ?? refetchOnMount,
         gcTime: other.gcTime ?? gcTime,
-        refetchOnWindowFocus: other.refetchOnWindowFocus ?? refetchOnWindowFocus,
+        refetchOnWindowFocus:
+            other.refetchOnWindowFocus ?? refetchOnWindowFocus,
         refetchOnReconnect: other.refetchOnReconnect ?? refetchOnReconnect,
       );
 }

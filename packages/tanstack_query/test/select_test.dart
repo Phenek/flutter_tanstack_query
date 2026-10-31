@@ -42,12 +42,19 @@ void main() {
 
     test('keeps equal sub-lists inside a changed list', () {
       final inner = [1, 2];
-      final a = [inner, [3]];
-      final b = [[1, 2], [4]];
+      final a = [
+        inner,
+        [3]
+      ];
+      final b = [
+        [1, 2],
+        [4]
+      ];
       final result = replaceEqualDeep(a, b);
 
       expect(result, isNot(same(a)));
-      expect(result[0], same(inner), reason: 'the untouched page keeps its identity');
+      expect(result[0], same(inner),
+          reason: 'the untouched page keeps its identity');
       expect(result[1], [4]);
     });
 
@@ -71,7 +78,8 @@ void main() {
       final a = {'a': 1, 'b': 2};
       final b = {'a': 1, 'b': 2};
       expect(replaceEqualDeep(a, b), same(a));
-      expect(replaceEqualDeep<Map<String, int>>(a, {'a': 1, 'b': 9}), isA<Map<String, int>>());
+      expect(replaceEqualDeep<Map<String, int>>(a, {'a': 1, 'b': 9}),
+          isA<Map<String, int>>());
     });
 
     test('replaceData calls a merge function written inline', () {
@@ -79,8 +87,7 @@ void main() {
       // which leaves an inline closure with no contextual type: it infers
       // `dynamic Function(dynamic, dynamic)`. JS only checks
       // `typeof === 'function'`, so the user's merge must still run.
-      expect(replaceData<List<int>>([1], [2], (prev, next) => <int>[42]),
-          [42]);
+      expect(replaceData<List<int>>([1], [2], (prev, next) => <int>[42]), [42]);
     });
 
     test('replaces values that are not traversable', () {
@@ -90,7 +97,8 @@ void main() {
   });
 
   group('structuralSharing on the cached data', () {
-    testWidgets('a refetch returning the same payload keeps the data identity', (tester) async {
+    testWidgets('a refetch returning the same payload keeps the data identity',
+        (tester) async {
       final client = testQueryClient();
       final key = queryKey();
 
@@ -98,7 +106,8 @@ void main() {
         tester,
         // A fresh list every call: without structural sharing each refetch is a
         // new instance and every observer rebuilds.
-        () => useQuery<List<int>>(queryKey: key, queryFn: () async => [1, 2, 3]),
+        () =>
+            useQuery<List<int>>(queryKey: key, queryFn: () async => [1, 2, 3]),
         client: client,
       );
       await tester.pumpAndSettle();
@@ -121,7 +130,8 @@ void main() {
       expect(probe.rebuilds, settled + 1);
     });
 
-    testWidgets('a queryFn returning a Map still lands as data, not as an error',
+    testWidgets(
+        'a queryFn returning a Map still lands as data, not as an error',
         (tester) async {
       final client = testQueryClient();
       final key = queryKey();
@@ -157,7 +167,8 @@ void main() {
       expect(probe.value.data, [9]);
     });
 
-    testWidgets('structuralSharing: false hands back the new instance', (tester) async {
+    testWidgets('structuralSharing: false hands back the new instance',
+        (tester) async {
       final client = testQueryClient();
       final key = queryKey();
 
@@ -203,7 +214,8 @@ void main() {
       unsubscribe();
     });
 
-    testWidgets('two observers select different shapes from one fetch', (tester) async {
+    testWidgets('two observers select different shapes from one fetch',
+        (tester) async {
       final client = testQueryClient();
       final key = queryKey();
       var calls = 0;
@@ -213,8 +225,7 @@ void main() {
         return const Route(110000.0, 5400.0);
       }
 
-      final summaryObserver =
-          QueryObserver<Route, Object?, Summary>(
+      final summaryObserver = QueryObserver<Route, Object?, Summary>(
         client,
         QueryObserverOptions<Route, Summary>(
           queryKey: key,
@@ -223,8 +234,7 @@ void main() {
           staleTime: double.infinity,
         ),
       );
-      final kmObserver =
-          QueryObserver<Route, Object?, double>(
+      final kmObserver = QueryObserver<Route, Object?, double>(
         client,
         QueryObserverOptions<Route, double>(
           queryKey: key,
@@ -247,7 +257,8 @@ void main() {
       unsubB();
     });
 
-    testWidgets('a selecting observer and a plain one share a single fetch', (tester) async {
+    testWidgets('a selecting observer and a plain one share a single fetch',
+        (tester) async {
       // The real shape in GasMobility: the itinerary view reads the whole route,
       // the summary bubble only km and minutes, both on the same key.
       final client = testQueryClient();
@@ -287,7 +298,8 @@ void main() {
       unsubB();
     });
 
-    testWidgets('a throwing select surfaces as an errored result', (tester) async {
+    testWidgets('a throwing select surfaces as an errored result',
+        (tester) async {
       final client = testQueryClient();
       final key = queryKey();
 
@@ -310,7 +322,8 @@ void main() {
       unsubscribe();
     });
 
-    testWidgets('select runs once per payload, and its result keeps its identity',
+    testWidgets(
+        'select runs once per payload, and its result keeps its identity',
         (tester) async {
       final client = testQueryClient();
       final key = queryKey();

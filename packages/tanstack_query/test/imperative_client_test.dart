@@ -85,14 +85,11 @@ void main() {
         return 'ok';
       }
 
-      await client.fetchQuery<String>(
-          queryKey: ['svc', 1], queryFn: fetch);
+      await client.fetchQuery<String>(queryKey: ['svc', 1], queryFn: fetch);
       await tester.pump(const Duration(milliseconds: 10));
-      await client.fetchQuery<String>(
-          queryKey: ['svc', 1], queryFn: fetch);
+      await client.fetchQuery<String>(queryKey: ['svc', 1], queryFn: fetch);
       await tester.pump(const Duration(milliseconds: 10));
-      expect(calls, 1,
-          reason: 'the key default made the cached data fresh');
+      expect(calls, 1, reason: 'the key default made the cached data fresh');
 
       // An explicit staleTime on the call beats the registered default.
       await client.fetchQuery<String>(
@@ -116,8 +113,8 @@ void main() {
       expect(apiOnly.map((e) => e.key.first), everyElement('api'));
       expect(apiOnly.map((e) => e.data).toSet(), {'A', 'B'});
 
-      final exact = client.getQueriesData<String>(
-          queryKey: ['api', 'a'], exact: true);
+      final exact =
+          client.getQueriesData<String>(queryKey: ['api', 'a'], exact: true);
       expect(exact.length, 1);
       expect(exact.single.key, ['api', 'a']);
       expect(exact.single.data, 'A');
@@ -140,7 +137,9 @@ void main() {
       expect(client.getQueryDefaults(['todos', 1]).staleTime, 5000);
     });
 
-    test('a default does not leak onto a key that merely starts with the same text', () {
+    test(
+        'a default does not leak onto a key that merely starts with the same text',
+        () {
       // Matching serialized keys with `String.startsWith` would let ['todo']
       // capture ['todos', 1]; `partialMatchKey` compares element by element.
       client.setQueryDefaults(['todo'], const QueryDefaults(staleTime: 5000));
@@ -150,18 +149,22 @@ void main() {
     });
 
     test('later registrations win per field', () {
-      client.setQueryDefaults(['todos'], const QueryDefaults(staleTime: 5000, gcTime: 1));
-      client.setQueryDefaults(['todos', 1], const QueryDefaults(staleTime: 9000));
+      client.setQueryDefaults(
+          ['todos'], const QueryDefaults(staleTime: 5000, gcTime: 1));
+      client
+          .setQueryDefaults(['todos', 1], const QueryDefaults(staleTime: 9000));
 
       final merged = client.getQueryDefaults(['todos', 1]);
       expect(merged.staleTime, 9000);
-      expect(merged.gcTime, 1, reason: 'a field the later default says nothing about is kept');
+      expect(merged.gcTime, 1,
+          reason: 'a field the later default says nothing about is kept');
     });
 
     testWidgets('fetchQuery honours a key default', (tester) async {
       final key = queryKey();
       var calls = 0;
-      client.setQueryDefaults(key, const QueryDefaults(staleTime: double.infinity));
+      client.setQueryDefaults(
+          key, const QueryDefaults(staleTime: double.infinity));
 
       Future<String> fetch() async {
         calls++;
@@ -173,7 +176,8 @@ void main() {
       await client.fetchQuery<String>(queryKey: key, queryFn: fetch);
       await tester.pump(const Duration(milliseconds: 10));
 
-      expect(calls, 1, reason: 'the infinite staleTime came from the key default');
+      expect(calls, 1,
+          reason: 'the infinite staleTime came from the key default');
     });
   });
 
@@ -197,7 +201,8 @@ void main() {
       expect(client.getQueryData<String>(key), 'ok');
     });
 
-    testWidgets('serves fresh cached data without calling the queryFn', (tester) async {
+    testWidgets('serves fresh cached data without calling the queryFn',
+        (tester) async {
       final key = queryKey();
       var calls = 0;
 
@@ -299,13 +304,15 @@ void main() {
               const QueryDefaultOptions(gcTime: -1, retry: 1, retryDelay: 1));
 
       Object? caught;
-      final pending = client.fetchQuery<String>(
+      final pending = client
+          .fetchQuery<String>(
         queryKey: queryKey(),
         queryFn: () async {
           calls++;
           throw Exception('boom');
         },
-      ).catchError((Object e) {
+      )
+          .catchError((Object e) {
         caught = e;
         return null;
       });
@@ -388,7 +395,8 @@ void main() {
       expect(await pending, 'fetched');
     });
 
-    testWidgets('revalidateIfStale serves the stale data and refetches behind it',
+    testWidgets(
+        'revalidateIfStale serves the stale data and refetches behind it',
         (tester) async {
       final key = queryKey();
       var calls = 0;
@@ -397,7 +405,8 @@ void main() {
       // Staleness is measured against `DateTime.now()`, which the test binding
       // does not fake — only timers are faked. So let real time pass, otherwise
       // data written microseconds ago is not stale even at `staleTime: 0`.
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)));
 
       final data = await client.ensureQueryData<String>(
         queryKey: key,
@@ -453,7 +462,8 @@ void main() {
       expect(await pending, ['page0']);
     });
 
-    testWidgets('revalidateIfStale serves the cached pages and refetches behind',
+    testWidgets(
+        'revalidateIfStale serves the cached pages and refetches behind',
         (tester) async {
       final key = queryKey();
       var calls = 0;
@@ -483,7 +493,8 @@ void main() {
   });
 
   group('removeQueries / resetQueries', () {
-    testWidgets('removeQueries drops the data and refetches nothing', (tester) async {
+    testWidgets('removeQueries drops the data and refetches nothing',
+        (tester) async {
       final key = queryKey();
       await client.fetchQuery<String>(queryKey: key, queryFn: () async => 'ok');
       await tester.pump(const Duration(milliseconds: 10));

@@ -256,7 +256,8 @@ class Query<T> extends Removable {
       // Mirrors React's `Query.setData`, which runs new data through
       // `replaceData`: a refetch that brings back the same payload keeps the
       // previous instance, so observers compare equal and nothing rebuilds.
-      final shared = replaceData<T>(prevRes?.data, value, options.structuralSharing);
+      final shared =
+          replaceData<T>(prevRes?.data, value, options.structuralSharing);
       final queryResult = QueryResult<T>(
           cacheKey, QueryStatus.success, shared, null,
           isFetching: false,

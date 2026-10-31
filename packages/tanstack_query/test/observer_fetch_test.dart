@@ -8,7 +8,8 @@ void main() {
 
   setUp(() => queryClient = testQueryClient());
 
-  testWidgets('observer.fetch awaits a queryFn slower than 4 seconds', (tester) async {
+  testWidgets('observer.fetch awaits a queryFn slower than 4 seconds',
+      (tester) async {
     // `QueryObserver.fetch` used to wrap `Query.fetch` in a hardcoded
     // `.timeout(Duration(seconds: 4))`, so any slower request resolved the
     // awaited result as still-pending while the fetch kept running. An
@@ -36,7 +37,8 @@ void main() {
     expect(cachedResult<String>(queryClient, key)?.data, 'slow');
   });
 
-  testWidgets('an infinite observer reads the client it was built with, not the last one',
+  testWidgets(
+      'an infinite observer reads the client it was built with, not the last one',
       (tester) async {
     // `InfiniteQueryObserver` used to reach for the `QueryClient.instance`
     // singleton, so building a second client silently rerouted the first

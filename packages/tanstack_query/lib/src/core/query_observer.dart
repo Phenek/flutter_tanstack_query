@@ -361,13 +361,15 @@ class QueryObserver<TQueryFnData, TError, TData>
     final select = _select;
     if (!skipSelect) {
       if (select != null && rawData != null) {
-        if (_hasSelectResult && _selectInput == rawData && select == _selectFn) {
+        if (_hasSelectResult &&
+            _selectInput == rawData &&
+            select == _selectFn) {
           data = _selectResult;
         } else {
           try {
             _selectFn = select;
-            final selected = replaceData<TData>(
-                _currentResult.data, select(rawData), options.structuralSharing);
+            final selected = replaceData<TData>(_currentResult.data,
+                select(rawData), options.structuralSharing);
             _selectResult = selected;
             _selectInput = rawData;
             _hasSelectResult = true;

@@ -57,7 +57,8 @@ class HookProbe<T> {
   }
 
   @override
-  String toString() => 'HookProbe(rebuilds: $rebuilds, value: ${values.isEmpty ? null : value})';
+  String toString() =>
+      'HookProbe(rebuilds: $rebuilds, value: ${values.isEmpty ? null : value})';
 }
 
 /// Mounts [hook] inside the standard provider scaffold and returns a probe on

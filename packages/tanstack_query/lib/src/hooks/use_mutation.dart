@@ -85,8 +85,8 @@ MutationResult<T, P> useMutation<T, P>(
 
   useEffect(() {
     // subscribe updates
-    final unsubscribe = observer
-        .subscribe(notifyManager.batchCalls<MutationObserverResult<T, P>>((res) {
+    final unsubscribe = observer.subscribe(
+        notifyManager.batchCalls<MutationObserverResult<T, P>>((res) {
       try {
         resultState.value = res;
       } catch (_) {}

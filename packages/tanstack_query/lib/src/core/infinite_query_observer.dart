@@ -159,9 +159,9 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
 
     if (settled is QueryResult<List<T>>) {
       final wrapped = _buildInfiniteResult(opts, settled, meta);
-      client.queryCache[cacheKey] =
-          QueryCacheEntry<List<T>>(wrapped, DateTime.now(),
-              queryKey: opts.queryKey);
+      client.queryCache[cacheKey] = QueryCacheEntry<List<T>>(
+          wrapped, DateTime.now(),
+          queryKey: opts.queryKey);
       // Fan-out to all observers on this Query (mirrors React's #dispatch fan-out).
       q.notifyObservers();
       return wrapped;
