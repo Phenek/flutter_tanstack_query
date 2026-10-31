@@ -121,13 +121,15 @@ InfiniteQueryResult<T> useInfiniteQuery<T>({
   final state = useState<InfiniteQueryResult<T>>(observer.getCurrentResult());
 
   useEffect(() {
-    final unsubscribe = observer.subscribe((InfiniteQueryResult<T> res) {
-      Future.microtask(() {
-        try {
-          state.value = res;
-        } catch (_) {}
-      });
-    });
+    // Sync once on (re)subscribe: on a key change the observer is recreated and
+    // `state` still holds the previous key's result until a notification fires.
+    state.value = observer.getCurrentResult();
+    final unsubscribe = observer
+        .subscribe(notifyManager.batchCalls<InfiniteQueryResult<T>>((res) {
+      try {
+        state.value = res;
+      } catch (_) {}
+    }));
 
     return () {
       unsubscribe();

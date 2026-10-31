@@ -28,6 +28,13 @@ class FetchMeta {
   final FetchMore? fetchMore;
 
   const FetchMeta({this.fetchMore});
+
+  @override
+  bool operator ==(Object other) =>
+      other is FetchMeta && other.fetchMore == fetchMore;
+
+  @override
+  int get hashCode => fetchMore.hashCode;
 }
 
 /// Metadata for fetching more pages.
@@ -35,6 +42,13 @@ class FetchMore {
   final FetchDirection direction;
 
   const FetchMore({required this.direction});
+
+  @override
+  bool operator ==(Object other) =>
+      other is FetchMore && other.direction == direction;
+
+  @override
+  int get hashCode => direction.hashCode;
 }
 
 class QueryOptions<T> {
@@ -83,6 +97,15 @@ class QueryOptions<T> {
   /// Can be a value (`T`) or a `PlaceholderDataFn<T>` that receives `(previousValue, previousQuery)`.
   final Object? placeholderData;
 
+  /// Controls identity stability of the data written to the cache.
+  ///
+  /// Accepts the same shapes as in JavaScript: `false` to store the new data
+  /// untouched, or a `T Function(T? previous, T next)` to merge it yourself.
+  /// `null` (the default) means [replaceEqualDeep] — a refetch that brings back
+  /// the same payload keeps the previous instance, so observers compare equal
+  /// and nothing rebuilds.
+  final Object? structuralSharing;
+
   /// Optional fetch behavior hook. Implementations replace the default [queryFn]
   /// with a custom async closure before [Query] creates its [Retryer].
   /// `InfiniteQueryObserver` injects [InfiniteQueryBehavior] here (mirroring
@@ -104,6 +127,7 @@ class QueryOptions<T> {
     this.initialData,
     this.initialDataUpdatedAt,
     this.placeholderData,
+    this.structuralSharing,
     this.behavior,
   });
 
@@ -122,6 +146,7 @@ class QueryOptions<T> {
     Object? initialData,
     Object? initialDataUpdatedAt,
     Object? placeholderData,
+    Object? structuralSharing,
     QueryBehavior<T>? behavior,
   }) {
     return QueryOptions<T>(
@@ -139,6 +164,7 @@ class QueryOptions<T> {
       initialData: initialData ?? this.initialData,
       initialDataUpdatedAt: initialDataUpdatedAt ?? this.initialDataUpdatedAt,
       placeholderData: placeholderData ?? this.placeholderData,
+      structuralSharing: structuralSharing ?? this.structuralSharing,
       behavior: behavior ?? this.behavior,
     );
   }
@@ -181,6 +207,47 @@ class QueryOptions<T> {
   }
 }
 
+/// Options an observer adds on top of the ones the [Query] itself needs.
+///
+/// Port of `QueryObserverOptions` in `types.ts`. The split matters: a [Query]
+/// caches what the `queryFn` returned (`TQueryFnData`), while an observer may
+/// expose something derived from it (`TData`). Two observers on the same key can
+/// therefore select different shapes out of one cached payload, and one network
+/// call.
+class QueryObserverOptions<TQueryFnData, TData>
+    extends QueryOptions<TQueryFnData> {
+  /// Transforms the cached data into what this observer exposes.
+  ///
+  /// It runs on every result, so it must be cheap and pure. The transformed
+  /// value goes through `structuralSharing`, so returning a freshly built record
+  /// or list does not by itself cause a rebuild.
+  ///
+  /// The function is memoized on its own identity, like in React Query: an
+  /// inline closure rebuilt on every widget build re-runs the selection, while a
+  /// top-level function or a tear-off does not.
+  final TData Function(TQueryFnData data)? select;
+
+  QueryObserverOptions({
+    required super.queryKey,
+    required super.queryFn,
+    this.select,
+    super.staleTime,
+    super.enabled,
+    super.retry,
+    super.retryDelay,
+    super.retryOnMount,
+    super.refetchOnMount,
+    super.refetchOnWindowFocus,
+    super.refetchOnReconnect,
+    super.gcTime,
+    super.initialData,
+    super.initialDataUpdatedAt,
+    super.placeholderData,
+    super.structuralSharing,
+    super.behavior,
+  });
+}
+
 /// Options specific to infinite queries.
 ///
 /// Note: This extends the general `QueryOptions` so shared options such as
@@ -213,6 +280,7 @@ class InfiniteQueryOptions<T> extends QueryOptions<List<T>> {
     dynamic super.initialData,
     dynamic super.initialDataUpdatedAt,
     dynamic super.placeholderData,
+    super.structuralSharing,
   })  : pageQueryFn = queryFn,
         super(
           queryFn: () async {
@@ -256,16 +324,16 @@ class QueryResult<T> {
   final T? data;
 
   /// Milliseconds since epoch when the data was last updated.
-  int? dataUpdatedAt;
+  final int? dataUpdatedAt;
 
   /// The error object if the query failed, or `null`.
   final Object? error;
 
   /// The number of times the query has failed in its current fetch cycle.
-  int failureCount;
+  final int failureCount;
 
   /// The last failure reason, or `null` if none.
-  Object? failureReason;
+  final Object? failureReason;
 
   /// Whether the query is in the error state.
   bool get isError => status == QueryStatus.error;
@@ -277,7 +345,7 @@ class QueryResult<T> {
   bool get isPending => status == QueryStatus.pending;
 
   /// Whether this result is placeholder data and should not be persisted.
-  bool isPlaceholderData;
+  final bool isPlaceholderData;
 
   /// Whether the cached value is considered stale.
   final bool isStale;
@@ -311,21 +379,51 @@ class QueryResult<T> {
     this.failureReason,
     this.fetchMeta,
   });
+
+  /// Field-by-field equality, the port of React Query's
+  /// `shallowEqualObjects(nextResult, prevResult)` guard: an observer that
+  /// recomputes an identical result must not notify its listeners.
+  ///
+  /// Like the JS version this compares [data] by `==`, so a fresh object that
+  /// merely *looks* the same still counts as a change. `structuralSharing`
+  /// keeps the previous instance when the data is deeply equal.
+  @override
+  bool operator ==(Object other) {
+    if (other is! QueryResult<T> || other.runtimeType != runtimeType) {
+      return false;
+    }
+    return other.key == key &&
+        other.status == status &&
+        other.data == data &&
+        other.error == error &&
+        other.isFetching == isFetching &&
+        other.isStale == isStale &&
+        other.dataUpdatedAt == dataUpdatedAt &&
+        other.isPlaceholderData == isPlaceholderData &&
+        other.failureCount == failureCount &&
+        other.failureReason == failureReason &&
+        other.fetchMeta == fetchMeta &&
+        other.refetch == refetch;
+  }
+
+  @override
+  int get hashCode => Object.hash(key, status, data, error, isFetching, isStale,
+      dataUpdatedAt, isPlaceholderData, failureCount, failureReason, fetchMeta);
 }
 
 /// Result type returned by [useInfiniteQuery], with helper `fetchNextPage` and
 /// `isFetchingNextPage` flag.
 class InfiniteQueryResult<T> extends QueryResult<List<T>> {
-  bool isFetchingNextPage;
-  bool isFetchingPreviousPage;
-  bool isFetchNextPageError;
-  bool isFetchPreviousPageError;
-  bool isRefetching;
-  bool isRefetchError;
-  bool hasNextPage;
-  bool hasPreviousPage;
-  Function? fetchNextPage;
-  Function? fetchPreviousPage;
+  final bool isFetchingNextPage;
+  final bool isFetchingPreviousPage;
+  final bool isFetchNextPageError;
+  final bool isFetchPreviousPageError;
+  final bool isRefetching;
+  final bool isRefetchError;
+  final bool hasNextPage;
+  final bool hasPreviousPage;
+  final Function? fetchNextPage;
+  final Function? fetchPreviousPage;
 
   InfiniteQueryResult({
     required String key,
@@ -359,6 +457,41 @@ class InfiniteQueryResult<T> extends QueryResult<List<T>> {
             failureReason: failureReason,
             refetch: refetch,
             fetchMeta: fetchMeta);
+
+  /// Extends [QueryResult]'s field-by-field equality with the infinite-only
+  /// fields.
+  ///
+  /// Without it the `shallowEqualObjects(nextResult, prevResult)` guard in
+  /// `QueryObserver.updateResult()` would compare only the shared fields, and a
+  /// change confined to e.g. `hasNextPage` or `isFetchingNextPage` would be
+  /// swallowed. `fetchNextPage` / `fetchPreviousPage` are compared too: they are
+  /// tear-offs of the observer's own methods, so they stay equal across passes.
+  @override
+  bool operator ==(Object other) =>
+      super == other &&
+      other is InfiniteQueryResult<T> &&
+      other.isFetchingNextPage == isFetchingNextPage &&
+      other.isFetchingPreviousPage == isFetchingPreviousPage &&
+      other.isFetchNextPageError == isFetchNextPageError &&
+      other.isFetchPreviousPageError == isFetchPreviousPageError &&
+      other.isRefetching == isRefetching &&
+      other.isRefetchError == isRefetchError &&
+      other.hasNextPage == hasNextPage &&
+      other.hasPreviousPage == hasPreviousPage &&
+      other.fetchNextPage == fetchNextPage &&
+      other.fetchPreviousPage == fetchPreviousPage;
+
+  @override
+  int get hashCode => Object.hash(
+      super.hashCode,
+      isFetchingNextPage,
+      isFetchingPreviousPage,
+      isFetchNextPageError,
+      isFetchPreviousPageError,
+      isRefetching,
+      isRefetchError,
+      hasNextPage,
+      hasPreviousPage);
 
   InfiniteQueryResult<T> copyWith({
     String? key,

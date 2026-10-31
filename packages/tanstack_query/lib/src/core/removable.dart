@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'timer_provider.dart';
+
 /// Base class that provides garbage-collection helpers for cache-managed
 /// objects such as `Query` and `Mutation`.
 ///
@@ -24,11 +26,11 @@ abstract class Removable {
     final gc = gcTime;
     if (gc == null || gc < 0) return;
 
-    _gcTimer = Timer(Duration(milliseconds: gc), () {
+    _gcTimer = timeoutManager.setTimeout(() {
       try {
         optionalRemove();
       } catch (_) {}
-    });
+    }, gc);
   }
 
   /// Update the configured GC time. The `defaultGcTime` should be provided by
@@ -42,7 +44,7 @@ abstract class Removable {
 
   /// Cancel any pending GC timers.
   void clearGcTimeout() {
-    _gcTimer?.cancel();
+    timeoutManager.clearTimeout(_gcTimer);
     _gcTimer = null;
   }
 

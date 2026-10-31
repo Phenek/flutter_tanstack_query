@@ -27,6 +27,20 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
   InfiniteQueryResult<T> getCurrentResult() =>
       _coerceResult(super.getCurrentResult());
 
+  /// The cached pages as a `List<T>`, keeping the cached instance whenever it
+  /// already is one.
+  ///
+  /// A fresh `cast()` on every pass would make every recomputed result unequal
+  /// to the previous one (Dart lists compare by identity), and the
+  /// `shallowEqualObjects` guard in `QueryObserver.updateResult()` would never
+  /// hold for an infinite query.
+  List<T> _asPages(Object? data) {
+    if (data is List<T>) return data;
+    // `cast()` is lazy, so force it here: a type mismatch must surface inside
+    // the caller's try/catch, not later at the UI layer.
+    return (data as List).cast<T>().toList(growable: false);
+  }
+
   InfiniteQueryResult<T> _coerceResult(QueryResult<List<T>> base) {
     if (base is InfiniteQueryResult<T>) return base;
 
@@ -37,7 +51,7 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
     var isPlaceholder = base.isPlaceholderData;
     try {
       if (base.data != null) {
-        safeData = (base.data as List).cast<T>();
+        safeData = _asPages(base.data);
       }
     } catch (_) {
       safeData = <T>[];
@@ -146,7 +160,8 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
     if (settled is QueryResult<List<T>>) {
       final wrapped = _buildInfiniteResult(opts, settled, meta);
       client.queryCache[cacheKey] =
-          QueryCacheEntry(wrapped, DateTime.now());
+          QueryCacheEntry<List<T>>(wrapped, DateTime.now(),
+              queryKey: opts.queryKey);
       // Fan-out to all observers on this Query (mirrors React's #dispatch fan-out).
       q.notifyObservers();
       return wrapped;
@@ -166,7 +181,7 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
   ) {
     List<T> safeData = <T>[];
     try {
-      if (res.data != null) safeData = (res.data as List).cast<T>();
+      if (res.data != null) safeData = _asPages(res.data);
     } catch (_) {}
 
     final direction = fetchMeta?.fetchMore?.direction;
@@ -202,7 +217,7 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
       isPlaceholderData: res.isPlaceholderData,
       failureCount: res.failureCount,
       failureReason: res.failureReason,
-      refetch: ({bool? throwOnError}) => fetch(throwOnError: throwOnError),
+      refetch: refetch,
       fetchMeta: fetchMeta,
     );
   }
@@ -235,7 +250,7 @@ class InfiniteQueryObserver<T> extends QueryObserver<List<T>, Object, List<T>> {
     var error = parentResult.error;
     try {
       if (parentResult.data != null) {
-        safeData = (parentResult.data as List).cast<T>();
+        safeData = _asPages(parentResult.data);
       }
     } catch (_) {
       safeData = <T>[];

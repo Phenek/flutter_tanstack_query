@@ -336,9 +336,9 @@ void main() {
       isFetching: false,
       error: Exception('old-error'),
       isFetchingNextPage: false,
+      failureCount: 1,
+      failureReason: Exception('old-error'),
     );
-    errored.failureCount = 1;
-    errored.failureReason = Exception('old-error');
     client.queryCache[cacheKey] = QueryCacheEntry(errored, DateTime.now());
 
     await tester.pumpWidget(QueryClientProvider(

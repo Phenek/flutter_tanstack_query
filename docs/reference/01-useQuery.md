@@ -89,6 +89,16 @@ QueryResult<T> useQuery<T>({
 - `retryDelay: dynamic`
   - Optional
   - Milliseconds between retries, or a function `(attempt, error) => int` returning the delay in ms.
+- `structuralSharing: bool | TData Function(TData? previous, TData next)`
+  - Optional
+  - Defaults to `replaceEqualDeep`: a fetch that brings back the same payload keeps the previous
+    instance, so observers compare equal and nothing rebuilds.
+  - Pass `false` to store each fetch's data as-is, or a function to merge it yourself.
+  - See [Render Optimizations](../guides/12-render-optimizations.md).
+- Not available here: `select`. It lives on `QueryObserver` / `QueryObserverOptions`, because Dart has
+  no default for a generic (TypeScript's `TData = TQueryFnData`) and no function overloads — a
+  `useQuery` with two type parameters would silently infer `dynamic` wherever the call site writes no
+  type argument. See [Render Optimizations](../guides/12-render-optimizations.md#select).
 - `staleTime: double?`
   - Optional
   - The time in milliseconds after which data is considered stale. If `null`, the client's default `staleTime` is used.

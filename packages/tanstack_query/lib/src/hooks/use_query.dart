@@ -32,6 +32,10 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 ///   attempt to retry when mounted.
 /// - [retryDelay]: Milliseconds between retries, or a function
 ///   `(attempt, error) => int` returning the delay in ms.
+/// - [structuralSharing]: `false` to store each fetch's data as-is, or a
+///   `T Function(T? previous, T next)` to merge it yourself. By default the new
+///   data is run through `replaceEqualDeep`, so a refetch that brings back the
+///   same payload keeps the previous instance and nothing rebuilds.
 /// - [staleTime]: Time in **milliseconds** after which cached data is considered
 ///   stale and will be refetched on next access. If null, the client's default
 ///   `staleTime` is used.
@@ -52,6 +56,7 @@ QueryResult<T> useQuery<T>(
     dynamic retry,
     bool? retryOnMount,
     dynamic retryDelay,
+    Object? structuralSharing,
     double? staleTime}) {
   final queryClient = useQueryClient();
   final cacheKey = queryKeyToCacheKey(queryKey);
@@ -73,6 +78,7 @@ QueryResult<T> useQuery<T>(
             initialData: initialData,
             initialDataUpdatedAt: initialDataUpdatedAt,
             placeholderData: placeholderData,
+            structuralSharing: structuralSharing,
           ),
       [
         queryClient,
@@ -89,6 +95,7 @@ QueryResult<T> useQuery<T>(
         initialData,
         initialDataUpdatedAt,
         placeholderData,
+        structuralSharing,
         cacheKey
       ]);
   // Observer follows the same pattern as useInfiniteQuery: create once and
@@ -108,14 +115,17 @@ QueryResult<T> useQuery<T>(
   final state = useState<QueryResult<T>>(observer.getCurrentResult());
 
   useEffect(() {
+    // Sync once on (re)subscribe: when the key changes, `observer` is recreated
+    // and `state` still holds the previous key's result until a notification
+    // fires — the new observer may have cached data and never notify at all.
+    state.value = observer.getCurrentResult();
     // Subscribe with a typed listener matching QueryObserver's contract
-    final unsubscribe = observer.subscribe((QueryResult<T> res) {
-      Future.microtask(() {
-        try {
-          state.value = res;
-        } catch (_) {}
-      });
-    });
+    final unsubscribe =
+        observer.subscribe(notifyManager.batchCalls<QueryResult<T>>((res) {
+      try {
+        state.value = res;
+      } catch (_) {}
+    }));
 
     return () {
       unsubscribe();

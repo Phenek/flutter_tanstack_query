@@ -56,10 +56,19 @@ class Query<T> extends Removable {
     }
   }
 
-  QueryCacheEntry<T>? get entry =>
-      client.queryCache[cacheKey] as QueryCacheEntry<T>?;
+  /// The cache entry for this query, or `null`. Entries are sometimes written
+  /// untyped (e.g. by [QueryClient.setQueryData] before this iteration), so the
+  /// cast is a checked `is` test: a mismatched entry reads as "no data" instead
+  /// of throwing out of [isStaleByTime] into an imperative caller.
+  QueryCacheEntry<T>? get entry {
+    final e = client.queryCache[cacheKey];
+    return e is QueryCacheEntry<T> ? e : null;
+  }
 
-  QueryResult<T>? get result => entry?.result as QueryResult<T>?;
+  QueryResult<T>? get result {
+    final r = client.queryCache[cacheKey]?.result;
+    return r is QueryResult<T> ? r : null;
+  }
 
   bool get hasObservers => _observers.isNotEmpty;
 
@@ -95,13 +104,21 @@ class Query<T> extends Removable {
   /// Whether the cached data is stale for the given [staleTime] (ms).
   /// Mirrors React's `Query.isStaleByTime()`: no data, invalidated, or older
   /// than `staleTime`.
-  bool isStaleByTime(int staleTime) {
+  ///
+  /// An infinite [staleTime] means "never stale by time" — but, exactly as in
+  /// JavaScript, the absence of data and `isInvalidated` are checked *first*,
+  /// so an invalidated query is stale whatever its `staleTime`.
+  bool isStaleByTime([num staleTime = 0]) {
     final res = result;
     if (res == null || res.data == null) return true;
     if (_isInvalidated) return true;
+    if (staleTime.isInfinite) return false;
     final updatedAt =
         res.dataUpdatedAt ?? entry?.timestamp.millisecondsSinceEpoch ?? 0;
-    return DateTime.now().millisecondsSinceEpoch - updatedAt > staleTime;
+    // `>=`, not `>`: React computes `!timeUntilStale(updatedAt, staleTime)` with
+    // `timeUntilStale = max(updatedAt + staleTime - now, 0)`, so at `staleTime: 0`
+    // data written in the same millisecond is already stale.
+    return DateTime.now().millisecondsSinceEpoch - updatedAt >= staleTime;
   }
 
   void _notifyObservers() {
@@ -179,7 +196,11 @@ class Query<T> extends Removable {
 
     _retryer = Retryer<T>(
       fn: context.fetchFn,
-      retry: options.retry ?? client.defaultOptions.queries.retry,
+      // `?? 3` lives here, not in the client defaults, so that "nothing
+      // configured retry" stays distinguishable from "retry is 3" — which is
+      // what `fetchQuery` needs to default to `false` without overriding a
+      // real default. Mirrors JS, where `createRetryer` does `retry ?? 3`.
+      retry: options.retry ?? client.defaultOptions.queries.retry ?? 3,
       retryDelay:
           options.retryDelay ?? client.defaultOptions.queries.retryDelay,
       onFail: (failureCount, error) {
@@ -232,8 +253,12 @@ class Query<T> extends Removable {
       _fetchMeta = null; // clear before notify so createResult sees idle state
       _isInvalidated =
           false; // fresh data: no longer invalidated (React `success`)
+      // Mirrors React's `Query.setData`, which runs new data through
+      // `replaceData`: a refetch that brings back the same payload keeps the
+      // previous instance, so observers compare equal and nothing rebuilds.
+      final shared = replaceData<T>(prevRes?.data, value, options.structuralSharing);
       final queryResult = QueryResult<T>(
-          cacheKey, QueryStatus.success, value, null,
+          cacheKey, QueryStatus.success, shared, null,
           isFetching: false,
           dataUpdatedAt: DateTime.now().millisecondsSinceEpoch,
           isPlaceholderData: false,

@@ -90,8 +90,7 @@ class QueryObserver<TQueryFnData, TError, TData>
     } catch (e) {
       if (throwOnError == true) rethrow;
     } finally {
-      _updateResult();
-      _notify();
+      if (_updateResult()) _notify();
     }
     return _currentResult;
   }
@@ -117,8 +116,7 @@ class QueryObserver<TQueryFnData, TError, TData>
         // never hide cached data behind a pending state that nothing would
         // resolve.
         _clearStaleDataOnMount = false;
-        _updateResult();
-        _notify();
+        if (_updateResult()) _notify();
       }
     }
   }
@@ -215,8 +213,7 @@ class QueryObserver<TQueryFnData, TError, TData>
   }
 
   void onQueryUpdate() {
-    _updateResult();
-    _notify();
+    if (_updateResult()) _notify();
   }
 
   /// Exposes the currently associated [Query] instance for subclasses.
@@ -231,8 +228,7 @@ class QueryObserver<TQueryFnData, TError, TData>
   @protected
   void updateQuery() {
     // Use QueryCache.build to obtain a Query instance.
-    final q = _client.queryCache
-        .build<TData>(_client, options as QueryOptions<TData>);
+    final q = _client.queryCache.build<TQueryFnData>(_client, options);
 
     if (_query == q) return; // nothing changed
 
@@ -256,41 +252,64 @@ class QueryObserver<TQueryFnData, TError, TData>
   Query? _lastQueryWithDefinedData;
   dynamic _lastPlaceholderDataOption;
 
+  TData Function(TQueryFnData data)? _selectFn;
+  TData? _selectResult;
+  TQueryFnData? _selectInput;
+  bool _hasSelectResult = false;
+  Object? _selectError;
+
+  /// The `select` of [options] when it carries one.
+  ///
+  /// `options` stays typed as `QueryOptions<TQueryFnData>` so `setOptions` and
+  /// the hooks keep their signature; only a [QueryObserverOptions] knows about
+  /// `TData`.
+  TData Function(TQueryFnData data)? get _select {
+    final current = options;
+    return current is QueryObserverOptions<TQueryFnData, TData>
+        ? current.select
+        : null;
+  }
+
   QueryResult<TData> createResult(
       QueryResult<dynamic> res, QueryCacheEntry? entry) {
     final cacheKey = queryKeyToCacheKey(options.queryKey);
 
-    // Determine the timestamp to use for staleness checks. Prefer the
-    // dataUpdatedAt on the result (used by initialData) and fall back to
-    // entry.timestamp when missing.
-    final int lastUpdatedAt = res.dataUpdatedAt ??
-        (entry != null ? entry.timestamp.millisecondsSinceEpoch : 0);
-
-    // Mirrors React's isStaleByTime: no data, invalidated, or older than
-    // staleTime. An invalidated query stays stale until fresh data lands.
-    final isStale = entry == null ||
-        (_query?.isInvalidated ?? false) ||
-        DateTime.now()
-                .difference(DateTime.fromMillisecondsSinceEpoch(lastUpdatedAt))
-                .inMilliseconds >
-            (options.staleTime ?? 0);
+    // Port of React's `isStale(query, options)`: the observer's resolved
+    // `staleTime` handed to `Query.isStaleByTime`, which is the single
+    // implementation — so no data (an errored query included), an invalidated
+    // query and data older than `staleTime` all read as stale here too, with
+    // the same `>=` boundary.
+    //
+    // React also reports `isStale: false` for a *disabled* observer; this port
+    // keeps reporting the real staleness there (see the `disabled query is
+    // marked stale but not refetched` test), and `shouldFetchOnWindowFocus` /
+    // `shouldFetchOnReconnect` check `enabled` on their own anyway.
+    final resolvedStaleTime =
+        options.staleTime ?? _client.defaultOptions.queries.staleTime ?? 0;
+    final isStale = _query?.isStaleByTime(resolvedStaleTime) ?? true;
 
     // Track last query with defined data for placeholderData function usage
     if (res.data != null) {
       _lastQueryWithDefinedData = _query;
     }
 
-    // Prepare default values
+    // Prepare default values. The cache holds `TQueryFnData`; `select` turns it
+    // into the `TData` this observer exposes.
     var status = res.status;
-    TData? data;
+    TQueryFnData? rawData;
+    var castFailed = false;
     try {
-      data = res.data as TData?;
+      rawData = res.data as TQueryFnData?;
     } catch (_) {
-      data = null;
+      rawData = null;
+      castFailed = true;
       status = QueryStatus.pending;
     }
     var isPlaceholder = res.isPlaceholderData;
     var isFetching = res.isFetching;
+
+    TData? data;
+    var skipSelect = false;
 
     if (_clearStaleDataOnMount) {
       final updatedAt = res.dataUpdatedAt ??
@@ -299,7 +318,7 @@ class QueryObserver<TQueryFnData, TError, TData>
 
       if (res.isFetching || updatedAt <= clearUntil) {
         status = QueryStatus.pending;
-        data = null;
+        rawData = null;
         isPlaceholder = false;
         isFetching = true;
       } else {
@@ -310,55 +329,120 @@ class QueryObserver<TQueryFnData, TError, TData>
     // If placeholderData is configured and we have no data and are pending,
     // compute placeholderData and treat it as success for this observer only
     if (options.placeholderData != null &&
-        data == null &&
+        rawData == null &&
         status == QueryStatus.pending) {
-      dynamic placeholderData;
-
-      // Reuse previous placeholder data if possible (memoization)
+      // Reuse previous placeholder data if possible (memoization). It was
+      // already run through `select` on an earlier pass, so selecting it again
+      // would select a selection — React guards this with the same `skipSelect`.
       if (_currentResult.isPlaceholderData &&
           options.placeholderData == _lastPlaceholderDataOption) {
-        placeholderData = _currentResult.data;
-      } else {
-        placeholderData = options.resolvePlaceholderData(
-            _lastQueryWithDefinedData?.result?.data, _lastQueryWithDefinedData);
-      }
-
-      if (placeholderData != null) {
         status = QueryStatus.success;
-        data = placeholderData as TData?;
+        data = _currentResult.data;
         isPlaceholder = true;
-        _lastPlaceholderDataOption = options.placeholderData;
+        skipSelect = true;
+      } else {
+        final placeholderData = options.resolvePlaceholderData(
+            _lastQueryWithDefinedData?.result?.data, _lastQueryWithDefinedData);
+
+        if (placeholderData != null) {
+          status = QueryStatus.success;
+          rawData = placeholderData as TQueryFnData?;
+          isPlaceholder = true;
+          _lastPlaceholderDataOption = options.placeholderData;
+        }
       }
+    }
+
+    // ── select ───────────────────────────────────────────────────────────────
+    // Mirrors React's `createResult`: memoized on the identity of both the raw
+    // data and the `select` function, then run through `structuralSharing` so a
+    // freshly built record that equals the previous one keeps its identity and
+    // does not wake listeners.
+    final select = _select;
+    if (!skipSelect) {
+      if (select != null && rawData != null) {
+        if (_hasSelectResult && _selectInput == rawData && select == _selectFn) {
+          data = _selectResult;
+        } else {
+          try {
+            _selectFn = select;
+            final selected = replaceData<TData>(
+                _currentResult.data, select(rawData), options.structuralSharing);
+            _selectResult = selected;
+            _selectInput = rawData;
+            _hasSelectResult = true;
+            _selectError = null;
+            data = selected;
+          } catch (selectError) {
+            _selectError = selectError;
+          }
+        }
+      } else if (!castFailed) {
+        try {
+          data = rawData as TData?;
+        } catch (_) {
+          data = null;
+          status = QueryStatus.pending;
+        }
+      }
+    }
+
+    // A throwing `select` surfaces as an errored result, as in React.
+    var error = res.error;
+    if (_selectError != null) {
+      error = _selectError;
+      data = _selectResult;
+      status = QueryStatus.error;
     }
 
     return QueryResult<TData>(
       cacheKey,
       status,
       data,
-      res.error,
+      error,
       isFetching: isFetching,
       isStale: isStale,
       dataUpdatedAt: res.dataUpdatedAt,
       isPlaceholderData: isPlaceholder,
       failureCount: res.failureCount,
       failureReason: res.failureReason,
-      refetch: ({bool? throwOnError}) => fetch(throwOnError: throwOnError),
+      refetch: refetch,
       fetchMeta: res.fetchMeta,
     );
   }
 
-  void _updateResult() {
+  /// Recomputes the current result and reports whether it changed.
+  ///
+  /// Mirrors React's `QueryObserver.updateResult()`, including its guard:
+  /// `if (shallowEqualObjects(nextResult, prevResult)) return` — an observer
+  /// that recomputes an identical result must not wake its listeners.
+  bool _updateResult() {
     final cacheKey = queryKeyToCacheKey(options.queryKey);
     final entry = _client.queryCache[cacheKey];
     final res = entry?.result;
 
     if (res is QueryResult) {
       try {
-        _currentResult = createResult(res, entry);
+        final next = createResult(res, entry);
+        if (next == _currentResult) return false;
+        _currentResult = next;
+        return true;
       } catch (_) {
         // Ignore cache entry when it cannot be cast to the expected generic type.
       }
+      return false;
     }
+
+    // No cache entry at all: either nothing ever fetched this key, or
+    // `removeQueries`/`resetQueries` just dropped it. React recomputes the
+    // result from the query's initial state in that case, so the observer falls
+    // back to `pending` (plus `placeholderData`, if any) instead of keeping
+    // data that is no longer in the cache on screen.
+    final next = createResult(
+        QueryResult<dynamic>(cacheKey, QueryStatus.pending, null, null), null);
+    if (next == _currentResult) return false;
+    _currentResult = next;
+    return true;
   }
 
   void _initFromCache() {

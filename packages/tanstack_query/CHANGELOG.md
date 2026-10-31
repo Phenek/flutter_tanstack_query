@@ -1,16 +1,34 @@
-## Unreleased
+## 2.0.0 (unreleased)
 
-- Feat: `QueryClientProvider.portal(context, child:)` re-exposes the client to a subtree mounted
-  outside the provider (an `Overlay`: a dragged `ReorderableListView` item, a dialog builder), where
-  `useQueryClient()` used to throw. It does not mount the client a second time.
-- Fix: `QueryObserver.fetch()` no longer wraps the fetch in a hardcoded 4 s `timeout`. A `queryFn`
-  slower than 4 s resolved the awaited result as still-pending while the request kept running.
-- Fix: `InfiniteQueryObserver` reads the `QueryClient` it was built with instead of the
-  `QueryClient.instance` singleton, which silently rerouted observers to the last client built.
-- Fix: export `InfiniteQueryObserver` from `tanstack_query.dart` — it was reachable only by a
-  relative import inside the package.
-- Chore: `test/test_utils.dart`, shared test helpers mirroring `@tanstack/query-test-utils`
-  (`queryKey()`, `sleep()`, `testQueryClient()`, `pumpHook()` with a rebuild counter).
+### New hooks
+
+- `usePrefetchQuery` — warms a key while a widget builds, without subscribing to it.
+- `usePrefetchInfiniteQuery` — the same, for an infinite query's first page.
+
+### New `QueryClient` methods
+
+- `fetchQuery` — fetch a key from outside the widget tree, deduplicated and cached (`retry: false` unless something else configures it).
+- `prefetchQuery` — `fetchQuery` that returns nothing and throws nothing.
+- `ensureQueryData` — the cached data, fetching only when there is none; `revalidateIfStale` refetches behind it.
+- `fetchInfiniteQuery` / `prefetchInfiniteQuery` / `ensureInfiniteQueryData` — the same three, for infinite queries.
+- `getQueryData` / `getQueryState` — read the cache without building a query or starting a fetch.
+- `getQueriesData` — every cached entry matching a key, as `(queryKey, data)` pairs.
+- `setQueryDataValue` — store a value directly, the JavaScript `setQueryData(key, value)` form.
+- `setQueryDefaults` / `getQueryDefaults` — default options per key, matched element by element.
+- `removeQueries` / `resetQueries` — drop matching queries; `resetQueries` refetches the active ones.
+
+### React Query parity fixes
+
+- Fix: key filters (`invalidateQueries`, `removeQueries`, `resetQueries`, `getQueriesData`) match element by element through `partialMatchKey`, not by `String.startsWith` on the serialized key — `['todos', 1]` no longer matches `['todos', 11]`.
+- Fix: `removeQueries` / `resetQueries` also reach cache entries written by `setQueryData` before any observer mounted, like React's `queryCache.findAll`.
+- Fix: a mounted `useQuery` falls back to `pending` after its entry is removed, instead of showing the removed data for good.
+- Fix: a `structuralSharing` merge function written inline is used. Being declared as `Object?` (so it can also hold `false`), the option left an inline closure typed `dynamic Function(dynamic, dynamic)`, which the typed check missed and silently ignored.
+- Fix: `fetchQuery` / `prefetchQuery` / `ensureQueryData` and their infinite variants apply `retry: false` only when nothing else configured it, so `defaultOptions.queries.retry` and `setQueryDefaults(retry:)` reach them. `QueryDefaultOptions.retry` now defaults to `null` ("not configured"); the retryer still falls back to 3, as `createRetryer` does in JavaScript.
+- Fix: `QueryResult.isStale` comes from `Query.isStaleByTime`, the single implementation — an errored query (no data) now reports `isStale: true` and refetches on focus/reconnect.
+- Fix: an invalidated query is stale even with `staleTime: double.infinity`, so `fetchQuery` refetches it.
+- Fix: `InfiniteQueryResult` equality covers its own fields, so a change confined to e.g. `hasNextPage` is no longer swallowed by the "result unchanged" guard; the cached page list keeps its identity across recomputations.
+- Fix: `ensureInfiniteQueryData` fetches only when there are no cached pages (an empty list is data) and accepts `revalidateIfStale`, like the JS version delegating to `ensureQueryData`.
+- Fix: `invalidateQueries`, `removeQueries` and `resetQueries` run inside `notifyManager.batch`, so one call over N queries rebuilds once.
 
 ## 1.2.8 (05/10/26)
 

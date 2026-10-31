@@ -85,13 +85,12 @@ MutationResult<T, P> useMutation<T, P>(
 
   useEffect(() {
     // subscribe updates
-    final unsubscribe = observer.subscribe((res) {
-      Future.microtask(() {
-        try {
-          resultState.value = res;
-        } catch (_) {}
-      });
-    });
+    final unsubscribe = observer
+        .subscribe(notifyManager.batchCalls<MutationObserverResult<T, P>>((res) {
+      try {
+        resultState.value = res;
+      } catch (_) {}
+    }));
 
     return () => unsubscribe();
   }, [observer]);

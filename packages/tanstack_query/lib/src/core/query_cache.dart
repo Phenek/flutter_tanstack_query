@@ -58,9 +58,15 @@ class QueryCacheEntry<T> {
   final dynamic
       result; // can be QueryResult/InfiniteQueryResult from flutter layer
   final DateTime timestamp;
+
+  /// The original (unhashed) query key, when the writer knows it. Used by
+  /// [QueryClient.getQueriesData] to hand back real keys, not cache hashes.
+  final List<Object>? queryKey;
+
   TrackedFuture<T>? queryFnRunning;
 
-  QueryCacheEntry(this.result, this.timestamp, {this.queryFnRunning});
+  QueryCacheEntry(this.result, this.timestamp,
+      {this.queryKey, this.queryFnRunning});
 
   @override
   String toString() =>
@@ -142,6 +148,24 @@ class QueryCache extends Subscribable<QueryCacheListener> {
           QueryCacheEventType.removed, query.cacheKey, null,
           callerId: callerId));
     }
+  }
+
+  /// Remove a cache entry that has no `Query` instance behind it.
+  ///
+  /// The counterpart of [remove] for data written by `QueryClient.setQueryData`
+  /// before anything mounted: React has a single map, so `findAll` sees that
+  /// data as a query and `remove(query)` is enough; here the entry lives on its
+  /// own until an observer builds a `Query` for the key.
+  void removeEntry(String cacheKey, {String? callerId}) {
+    if (!_cache.containsKey(cacheKey)) {
+      _invalidatedKeys.remove(cacheKey);
+      return;
+    }
+    _cache.remove(cacheKey);
+    _invalidatedKeys.remove(cacheKey);
+    _notifyListeners(QueryCacheNotifyEvent(
+        QueryCacheEventType.removed, cacheKey, null,
+        callerId: callerId));
   }
 
   /// Remove entries for which [test] returns true, and notify listeners for each removed entry.
@@ -278,6 +302,17 @@ class QueryCache extends Subscribable<QueryCacheListener> {
   /// Returns a snapshot of all currently registered Query instances.
   List<Query> getAllQueries() => _queries.values.whereType<Query>().toList();
 
+  /// The original (unhashed) query key for [cacheKey]: taken from the cache
+  /// entry when the writer recorded it, else from the built `Query`, else the
+  /// hash itself as a last resort.
+  List<Object> queryKeyOf(String cacheKey) {
+    final fromEntry = _cache[cacheKey]?.queryKey;
+    if (fromEntry != null) return fromEntry;
+    final q = _queries[cacheKey];
+    if (q is Query) return q.options.queryKey;
+    return <Object>[cacheKey];
+  }
+
   /// Mark a cache key as invalidated when no Query instance exists for it yet.
   /// See [_invalidatedKeys].
   void markInvalidated(String cacheKey) {
@@ -313,13 +348,14 @@ class QueryCache extends Subscribable<QueryCacheListener> {
       if (initData != null) {
         final updatedAt = options.resolveInitialDataUpdatedAt() ?? 0;
 
-        final queryResult = QueryResult(
+        final queryResult = QueryResult<T>(
             cacheKey, QueryStatus.success, initData as T, null,
             isFetching: false,
             dataUpdatedAt: updatedAt,
             isPlaceholderData: false);
-        _cache[cacheKey] = QueryCacheEntry(
-            queryResult, DateTime.fromMillisecondsSinceEpoch(updatedAt));
+        _cache[cacheKey] = QueryCacheEntry<T>(
+            queryResult, DateTime.fromMillisecondsSinceEpoch(updatedAt),
+            queryKey: options.queryKey);
       }
     }
 

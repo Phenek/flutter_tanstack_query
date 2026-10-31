@@ -2,6 +2,14 @@
 class QueryDefaultOptions {
   final bool enabled;
   final double? staleTime;
+
+  /// Retry policy for every query: `bool`, `int` or
+  /// `(failureCount, error) => bool`.
+  ///
+  /// `null` means "not configured", and the retryer then uses 3 — the same
+  /// split as in JavaScript, where the `3` lives in `createRetryer`. It is what
+  /// lets [QueryClient.fetchQuery] fall back to `retry: false` only when
+  /// nothing else configured it.
   final dynamic retry; // bool | int | Function
   final dynamic retryDelay; // int | Function
   final bool retryOnMount;
@@ -13,13 +21,53 @@ class QueryDefaultOptions {
   const QueryDefaultOptions(
       {this.enabled = true,
       this.staleTime = 0,
-      this.retry = 3,
+      this.retry,
       this.retryDelay = 1000,
       this.retryOnMount = true,
       this.refetchOnMount = true,
       this.gcTime = 5 * 60 * 1000,
       this.refetchOnWindowFocus = true,
       this.refetchOnReconnect = true});
+}
+
+/// Nullable counterpart of [QueryDefaultOptions]: every field left `null` means
+/// "not configured", so [QueryClient.setQueryDefaults] can tell an explicit
+/// default apart from an absent one when merging several key defaults.
+class QueryDefaults {
+  final bool? enabled;
+  final double? staleTime;
+  final dynamic retry; // bool | int | Function
+  final dynamic retryDelay; // int | Function
+  final bool? retryOnMount;
+  final bool? refetchOnMount;
+  final int? gcTime;
+  final bool? refetchOnWindowFocus;
+  final bool? refetchOnReconnect;
+
+  const QueryDefaults({
+    this.enabled,
+    this.staleTime,
+    this.retry,
+    this.retryDelay,
+    this.retryOnMount,
+    this.refetchOnMount,
+    this.gcTime,
+    this.refetchOnWindowFocus,
+    this.refetchOnReconnect,
+  });
+
+  /// Field-by-field merge; [other] wins where it sets a value.
+  QueryDefaults merge(QueryDefaults other) => QueryDefaults(
+        enabled: other.enabled ?? enabled,
+        staleTime: other.staleTime ?? staleTime,
+        retry: other.retry ?? retry,
+        retryDelay: other.retryDelay ?? retryDelay,
+        retryOnMount: other.retryOnMount ?? retryOnMount,
+        refetchOnMount: other.refetchOnMount ?? refetchOnMount,
+        gcTime: other.gcTime ?? gcTime,
+        refetchOnWindowFocus: other.refetchOnWindowFocus ?? refetchOnWindowFocus,
+        refetchOnReconnect: other.refetchOnReconnect ?? refetchOnReconnect,
+      );
 }
 
 /// Default options placeholder for mutations.

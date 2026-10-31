@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'timer_provider.dart';
+
 /// Exception thrown when a query or mutation is cancelled.
 class CancelledError implements Exception {
   /// Whether the cancellation should be silent (suppress error reporting).
@@ -40,10 +42,10 @@ class Retryer<T> {
 
   Future<void> _delay(int ms) {
     final c = Completer<void>();
-    _timer = Timer(Duration(milliseconds: ms), () {
+    _timer = timeoutManager.setTimeout(() {
       _timer = null;
       c.complete();
-    });
+    }, ms);
     return c.future;
   }
 
@@ -132,7 +134,7 @@ class Retryer<T> {
 
   void cancel() {
     _cancelled = true;
-    _timer?.cancel();
+    timeoutManager.clearTimeout(_timer);
     _timer = null;
   }
 
